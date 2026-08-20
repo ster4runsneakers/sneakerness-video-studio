@@ -4,14 +4,15 @@ from google import genai
 from google.genai import types
 import os
 import time
+from PIL import Image, ImageDraw, ImageFont
 
-# Robust MoviePy Imports (Handles v1.x and v2.x compatibility)
+# Robust MoviePy Imports
 try:
-    from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+    from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
 except ImportError:
     from moviepy.video.io.VideoFileClip import VideoFileClip
     from moviepy.audio.io.AudioFileClip import AudioFileClip
-    from moviepy.video.VideoClip import TextClip
+    from moviepy.video.VideoClip import ImageClip
     from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
 # Ρύθμιση σελίδας
@@ -42,7 +43,39 @@ def clear_all_fields():
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
 
-# 2. UI & UPLOADS
+# 2. HELPER FUNCTION: TEXT OVERLAY GENERATOR VIA PILLOW (NO IMAGEMAGICK NEEDED)
+def create_text_overlay_image(text, width, height):
+    img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    font_size = int(height * 0.045)
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    bbox = draw.textbbox((0, 0), text, font=font)
+    text_w = bbox[2] - bbox[0]
+    text_h = bbox[3] - bbox[1]
+    
+    x = (width - text_w) // 2
+    y = int(height * 0.08)
+
+    # Stroke effect (περίγραμμα)
+    stroke_w = 2
+    for offset_x in range(-stroke_w, stroke_w + 1):
+        for offset_y in range(-stroke_w, stroke_w + 1):
+            draw.text((x + offset_x, y + offset_y), text, font=font, fill=(0, 0, 0, 255))
+
+    # Κύριο κείμενο (λευκό)
+    draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+    
+    os.makedirs("temp", exist_ok=True)
+    overlay_path = "temp/text_overlay.png"
+    img.save(overlay_path)
+    return overlay_path
+
+# 3. UI & UPLOADS
 col_header, col_reset = st.columns([3, 1])
 with col_reset:
     st.write("")
@@ -61,7 +94,7 @@ with col_preview:
     if uploaded_file is not None:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
-# 3. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
+# 4. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
 def generate_category_script(image_bytes, mime_type):
     sys_instruction = """You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
     Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script for Grok AI.
@@ -112,7 +145,7 @@ def generate_category_script(image_bytes, mime_type):
             }
         ],
         "text_overlay": "Short high-converting text overlay",
-        "music_vibe": "Category-matched audio style (e.g., Hip-hop beat, Lofi, Synthwave, Energetic rock)"
+        "music_vibe": "Category-matched audio style"
     }"""
     
     contents = [
@@ -162,13 +195,13 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
             except Exception as err:
                 st.error(f"❌ Σφάλμα: {str(err)}")
 
-# 4. EDITABLE FIELDS
+# 5. EDITABLE FIELDS
 col1, col2, col3 = st.columns(3)
 with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 5. SCRIPT DISPLAY & POST-PRODUCTION
+# 6. SCRIPT DISPLAY & POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
@@ -219,9 +252,11 @@ if "script" in st.session_state:
                         audio_clip = AudioFileClip(audio_input_path).subclip(0, min(video_clip.duration, AudioFileClip(audio_input_path).duration))
                         video_clip = video_clip.set_audio(audio_clip)
 
+                    # Δημιουργία overlay μέσω PIL αντί για ImageMagick TextClip
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
-                    txt_clip = TextClip(text_content, fontsize=45, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video_clip.w * 0.85, None))
-                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).set_duration(video_clip.duration)
+                    overlay_img_path = create_text_overlay_image(text_content, video_clip.w, video_clip.h)
+                    
+                    txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(video_clip.duration)
 
                     final_clip = CompositeVideoClip([video_clip, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
