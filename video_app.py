@@ -3,6 +3,7 @@ import json
 from google import genai
 from google.genai import types
 import os
+import time
 
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
@@ -79,15 +80,28 @@ def generate_video_script_from_image(image_bytes, mime_type):
         prompt
     ]
 
-    response = client.models.generate_content(
-        model="gemini-3.6-flash",
-        contents=contents,
-        config=types.GenerateContentConfig(
-            system_instruction=sys_instruction,
-            response_mime_type="application/json"
-        )
-    )
-    return json.loads(response.text)
+    models_to_try = ["gemini-2.5-flash", "gemini-3.6-flash"]
+    
+    for model_item in models_to_try:
+        try:
+            response = client.models.generate_content(
+                model=model_item,
+                contents=contents,
+                config=types.GenerateContentConfig(
+                    system_instruction=sys_instruction,
+                    response_mime_type="application/json"
+                )
+            )
+            if response and response.text:
+                clean_txt = response.text.strip()
+                if clean_txt.startswith("```json"): clean_txt = clean_txt[7:]
+                if clean_txt.startswith("```"): clean_txt = clean_txt[3:]
+                if clean_txt.endswith("```"): clean_txt = clean_txt[:-3]
+                return json.loads(clean_txt.strip())
+        except Exception as e:
+            time.sleep(1)
+            
+    raise Exception("All models failed to generate response.")
 
 # Κουμπί Αυτοματισμού
 if st.button("🚀 Αυτόματη Ανίχνευση & Σκηνοθεσία Βίντεο", type="primary"):
@@ -95,19 +109,22 @@ if st.button("🚀 Αυτόματη Ανίχνευση & Σκηνοθεσία Β
         st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
     else:
         with st.spinner("Ο σκηνοθέτης αναλύει το παπούτσι και σκέφτεται το σενάριο..."):
-            img_bytes = uploaded_file.getvalue()
-            mime = "image/jpeg"
-            if uploaded_file.name.lower().endswith(".png"): mime = "image/png"
-            elif uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
+            try:
+                img_bytes = uploaded_file.getvalue()
+                mime = "image/jpeg"
+                if uploaded_file.name.lower().endswith(".png"): mime = "image/png"
+                elif uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
 
-            script = generate_video_script_from_image(img_bytes, mime)
-            st.session_state["script"] = script
-            st.session_state["brand_val"] = script.get("brand", "")
-            st.session_state["model_val"] = script.get("model", "")
-            st.session_state["colorway_val"] = script.get("colorway", "")
-            st.rerun()
+                script = generate_video_script_from_image(img_bytes, mime)
+                st.session_state["script"] = script
+                st.session_state["brand_val"] = script.get("brand", "")
+                st.session_state["model_val"] = script.get("model", "")
+                st.session_state["colorway_val"] = script.get("colorway", "")
+                st.rerun()
+            except Exception as err:
+                st.error(st.error(f"❌ Σφάλμα ανάλυσης: {str(err)}"))
 
-# 4. INPUT FIELDS (συμπληρώνονται αυτόματα αλλά μπορείς να τα αλλάξεις)
+# 4. INPUT FIELDS
 col1, col2, col3 = st.columns(3)
 with col1: 
     brand = st.text_input("Brand", value=st.session_state["brand_val"])
