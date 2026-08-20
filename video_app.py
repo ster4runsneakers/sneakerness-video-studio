@@ -4,6 +4,7 @@ from google import genai
 from google.genai import types
 import os
 import time
+import textwrap
 from PIL import Image, ImageDraw, ImageFont
 
 # FIX FOR PILLOW 10+ COMPATIBILITY WITH MOVIEPY
@@ -48,31 +49,55 @@ def clear_all_fields():
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
 
-# 2. HELPER FUNCTION: TEXT OVERLAY GENERATOR VIA PILLOW
+# 2. HELPER FUNCTION: AUTO-WRAPPING & DYNAMICALLY SCALED TEXT OVERLAY
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    font_size = int(height * 0.045)
+    # 1. Καθορισμός μέγιστου πλάτους κειμένου (80% του πλάτους του βίντεο)
+    max_text_width = int(width * 0.80)
+    
+    # 2. Δυναμικό μέγεθος γραμματοσειράς βάσει προσανατολισμού
+    font_size = int(height * 0.035) if height > width else int(height * 0.05)
+    
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
-    bbox = draw.textbbox((0, 0), text, font=font)
-    text_w = bbox[2] - bbox[0]
+    # 3. Αναδίπλωση κειμένου (Word Wrapping)
+    # Υπολογίζουμε πόσους χαρακτήρες χωράει κάθε γραμμή
+    avg_char_width = font_size * 0.55
+    chars_per_line = max(10, int(max_text_width / avg_char_width))
+    wrapped_lines = textwrap.wrap(text, width=chars_per_line)
     
-    x = (width - text_w) // 2
-    y = int(height * 0.08)
+    # 4. Υπολογισμός συνολικού ύψους κειμένου
+    line_padding = 10
+    total_text_height = 0
+    line_metrics = []
+    
+    for line in wrapped_lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        lw = bbox[2] - bbox[0]
+        lh = bbox[3] - bbox[1]
+        line_metrics.append((line, lw, lh))
+        total_text_height += lh + line_padding
 
-    # Stroke effect (περίγραμμα)
-    stroke_w = 2
-    for offset_x in range(-stroke_w, stroke_w + 1):
-        for offset_y in range(-stroke_w, stroke_w + 1):
-            draw.text((x + offset_x, y + offset_y), text, font=font, fill=(0, 0, 0, 255))
+    # 5. Τοποθέτηση στο πάνω μέρος (Top Safe Area)
+    current_y = int(height * 0.08)
+    stroke_w = 3
 
-    # Κύριο κείμενο (λευκό)
-    draw.text((x, y), text, font=font, fill=(255, 255, 255, 255))
+    for line, lw, lh in line_metrics:
+        x = (width - lw) // 2
+        
+        # Stroke effect (Μαύρο περίγραμμα για αναγνωσιμότητα)
+        for offset_x in range(-stroke_w, stroke_w + 1):
+            for offset_y in range(-stroke_w, stroke_w + 1):
+                draw.text((x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0, 255))
+
+        # Λευκό κύριο κείμενο
+        draw.text((x, current_y), line, font=font, fill=(255, 255, 255, 255))
+        current_y += lh + line_padding
     
     os.makedirs("temp", exist_ok=True)
     overlay_path = "temp/text_overlay.png"
@@ -103,6 +128,7 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
     sys_instruction = f"""You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
     Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script for Grok AI.
     The current target video format is: {target_aspect_ratio}. Ensure camera directions reflect this orientation.
+    Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words) so it fits perfectly on video screens.
     
     STRICT CATEGORY & STYLING MAPPING RULES:
     1. BASKETBALL (e.g. Kobe, Kyrie, Jordan, LeBron):
@@ -293,7 +319,7 @@ if "script" in st.session_state:
                         audio_clip = AudioFileClip(audio_input_path).subclip(0, min(merged_video.duration, AudioFileClip(audio_input_path).duration))
                         merged_video = merged_video.set_audio(audio_clip)
 
-                    # 5. Δημιουργία overlay μέσω PIL
+                    # 5. Δημιουργία overlay μέσω PIL με αυτόματο Wrapping & Scaling
                     output_path = "temp/final_sneakerness_ad.mp4"
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
                     overlay_img_path = create_text_overlay_image(text_content, merged_video.w, merged_video.h)
