@@ -8,18 +8,19 @@ from PIL import Image, ImageDraw, ImageFont
 
 # Robust MoviePy Imports
 try:
-    from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip
+    from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
 except ImportError:
     from moviepy.video.io.VideoFileClip import VideoFileClip
     from moviepy.audio.io.AudioFileClip import AudioFileClip
     from moviepy.video.VideoClip import ImageClip
     from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
+    from moviepy.video.compositing.concatenate import concatenate_videoclips
 
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Category-Aware Archetype Engine & Grok Prompt Director")
+st.subheader("Category-Aware Archetype Engine & Multi-Clip Video Merger")
 
 # API Key check
 api_key = os.getenv("GEMINI_API_KEY")
@@ -43,7 +44,7 @@ def clear_all_fields():
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
 
-# 2. HELPER FUNCTION: TEXT OVERLAY GENERATOR VIA PILLOW (NO IMAGEMAGICK NEEDED)
+# 2. HELPER FUNCTION: TEXT OVERLAY GENERATOR VIA PILLOW
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -56,7 +57,6 @@ def create_text_overlay_image(text, width, height):
 
     bbox = draw.textbbox((0, 0), text, font=font)
     text_w = bbox[2] - bbox[0]
-    text_h = bbox[3] - bbox[1]
     
     x = (width - text_w) // 2
     y = int(height * 0.08)
@@ -201,7 +201,7 @@ with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 6. SCRIPT DISPLAY & POST-PRODUCTION
+# 6. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
@@ -223,46 +223,62 @@ if "script" in st.session_state:
         st.code(item.get('grok_prompt'), language="text")
         
     st.markdown("---")
-    st.markdown("### 🎬 Grok Video Polishing & Branding (MoviePy)")
-    grok_video_file = st.file_uploader("📥 Ανέβασε το τελικό βίντεο από το Grok (.mp4)", type=["mp4", "mov"])
+    st.markdown("### 🎬 Multi-Clip Merger & Branding (MoviePy)")
+    grok_video_files = st.file_uploader(
+        "📥 Ανέβασε έως 6 βίντεο-κλιπ (.mp4)", 
+        type=["mp4", "mov"], 
+        accept_multiple_files=True
+    )
     bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (.mp3)", type=["mp3"])
 
-    if st.button("⚙️ Προσθήκη Μουσικής & Branding", type="primary"):
-        if not grok_video_file:
-            st.warning("⚠️ Ανέβασε πρώτα το βίντεο από το Grok!")
+    if st.button("⚙️ Σύνθεση Κλιπ, Μουσικής & Branding", type="primary"):
+        if not grok_video_files or len(grok_video_files) == 0:
+            st.warning("⚠️ Ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
+        elif len(grok_video_files) > 6:
+            st.error("❌ Παρακαλώ ανέβασε μέχρι 6 βίντεο-κλιπ.")
         else:
-            with st.spinner("Η Python μοντάρει το τελικό βίντεο..."):
+            with st.spinner("Η Python συνθέτει τα κλιπ και μοντάρει το τελικό βίντεο..."):
                 try:
                     os.makedirs("temp", exist_ok=True)
-                    video_input_path = "temp/grok_video.mp4"
-                    with open(video_input_path, "wb") as f:
-                        f.write(grok_video_file.getbuffer())
+                    loaded_clips = []
 
+                    # 1. Φόρτωση και αποθήκευση όλων των κλιπ στη σειρά
+                    for idx, vfile in enumerate(grok_video_files):
+                        vpath = f"temp/input_clip_{idx}.mp4"
+                        with open(vpath, "wb") as f:
+                            f.write(vfile.getbuffer())
+                        clip = VideoFileClip(vpath)
+                        loaded_clips.append(clip)
+
+                    # 2. Ενωση των βίντεο στη σειρά (Concatenation)
+                    merged_video = concatenate_videoclips(loaded_clips, method="compose")
+
+                    # 3. Φόρτωση ήχου αν υπάρχει
                     audio_input_path = None
                     if bg_audio_file:
                         audio_input_path = "temp/bg_audio.mp3"
                         with open(audio_input_path, "wb") as f:
                             f.write(bg_audio_file.getbuffer())
+                        audio_clip = AudioFileClip(audio_input_path).subclip(0, min(merged_video.duration, AudioFileClip(audio_input_path).duration))
+                        merged_video = merged_video.set_audio(audio_clip)
 
+                    # 4. Δημιουργία overlay μέσω PIL
                     output_path = "temp/final_sneakerness_ad.mp4"
-
-                    video_clip = VideoFileClip(video_input_path)
-
-                    if audio_input_path:
-                        audio_clip = AudioFileClip(audio_input_path).subclip(0, min(video_clip.duration, AudioFileClip(audio_input_path).duration))
-                        video_clip = video_clip.set_audio(audio_clip)
-
-                    # Δημιουργία overlay μέσω PIL αντί για ImageMagick TextClip
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
-                    overlay_img_path = create_text_overlay_image(text_content, video_clip.w, video_clip.h)
+                    overlay_img_path = create_text_overlay_image(text_content, merged_video.w, merged_video.h)
                     
-                    txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(video_clip.duration)
+                    txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
 
-                    final_clip = CompositeVideoClip([video_clip, txt_clip])
+                    # 5. Τελική σύνθεση & Export
+                    final_clip = CompositeVideoClip([merged_video, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
+                    # Καθαρισμός μνήμης clips
+                    for c in loaded_clips: c.close()
+                    merged_video.close()
+
                     st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το βίντεο ολοκληρώθηκε!")
+                    st.success("🎉 Το πολυ-καναλικό βίντεο συντέθηκε με επιτυχία!")
 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -273,6 +289,6 @@ if "script" in st.session_state:
             st.download_button(
                 label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
                 data=file,
-                file_name="sneakerness_grok_final.mp4",
+                file_name="sneakerness_multi_clip_final.mp4",
                 mime="video/mp4"
             )
