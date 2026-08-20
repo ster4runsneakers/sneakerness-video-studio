@@ -4,7 +4,15 @@ from google import genai
 from google.genai import types
 import os
 import time
-from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+
+# Robust MoviePy Imports (Handles v1.x and v2.x compatibility)
+try:
+    from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVideoClip
+except ImportError:
+    from moviepy.video.io.VideoFileClip import VideoFileClip
+    from moviepy.audio.io.AudioFileClip import AudioFileClip
+    from moviepy.video.VideoClip import TextClip
+    from moviepy.video.compositing.CompositeVideoClip import CompositeVideoClip
 
 # Ρύθμιση σελίδας
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
