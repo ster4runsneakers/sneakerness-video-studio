@@ -18,40 +18,66 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# --- 1. Ο Σκηνοθέτης με Multimodal Υποστήριξη ---
-def generate_script_with_vision(brand, model, colorway, image_bytes=None, mime_type="image/jpeg"):
+# 1. INITIALIZE SESSION STATE
+if "brand_val" not in st.session_state: st.session_state["brand_val"] = ""
+if "model_val" not in st.session_state: st.session_state["model_val"] = ""
+if "colorway_val" not in st.session_state: st.session_state["colorway_val"] = ""
+if "uploader_key" not in st.session_state: st.session_state["uploader_key"] = 0
+
+def clear_all_fields():
+    st.session_state["brand_val"] = ""
+    st.session_state["model_val"] = ""
+    st.session_state["colorway_val"] = ""
+    st.session_state["uploader_key"] = st.session_state.get("uploader_key", 0) + 1
+    if "script" in st.session_state: del st.session_state["script"]
+
+# 2. UI & ACTIONS
+col_header, col_reset = st.columns([3, 1])
+with col_reset:
+    st.write("")
+    if st.button("🧹 Νέο Παπούτσι / Clear"):
+        clear_all_fields()
+        st.rerun()
+
+col_up, col_preview = st.columns([2, 1])
+with col_up:
+    uploaded_file = st.file_uploader(
+        "📷 Ανέβασε φωτογραφία παπουτσιού", 
+        type=["jpg", "jpeg", "png", "webp"],
+        key=f"uploader_{st.session_state['uploader_key']}"
+    )
+with col_preview:
+    if uploaded_file is not None:
+        st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
+
+# 3. AUTO-ANALYZE & SCRIPT GENERATION FUNCTION
+def generate_video_script_from_image(image_bytes, mime_type):
     sys_instruction = """Είσαι ο βραβευμένος σκηνοθέτης διαφημίσεων του Sneakerness.eu. 
-    Στόχος σου είναι να δημιουργείς φρέσκα, πρωτότυπα σενάρια 16 δευτερολέπτων για TikTok/Reels. 
-    Αποφεύγεις τα κλισέ. Σκέφτεσαι 'out of the box'. 
-    Επιστρέφεις πάντα ένα έγκυρο JSON."""
+    Αναλύεις τη φωτογραφία του παπουτσιού και δημιουργείς ένα πρωτότυπο, κινηματογραφικό σενάριο 16 δευτερολέπτων για TikTok/Reels. 
+    Επιστρέφεις αποκλειστικά έγκυρο JSON."""
     
-    prompt = f"""
-    Δημιούργησε ένα δημιουργικό σενάριο 16 δευτερολέπτων για το sneaker: {brand} {model} ({colorway}).
+    prompt = """Examine the provided sneaker image. Identify the brand, model, and colorway, and create a 16-second cinematic video script.
     
-    Κανόνες φαντασίας:
-    1. Δώσε ένα μοναδικό 'Creative Concept' (π.χ. 'The Concrete Playground', 'Morning Zen', 'Midnight Runner').
-    2. Πρότεινε 'Mood' (π.χ. Moody, Cinematic, High Energy, Minimalist).
-    3. Χώρισε το βίντεο σε 3 σκηνές (0-5s, 5-11s, 11-16s) με αναλυτικές οδηγίες κίνησης κάμερας.
-    4. Πρότεινε ένα κείμενο (Overlay Text) που να προκαλεί συναίσθημα.
-    5. Πρότεινε το vibe της μουσικής.
-    
-    Επίστρεψε το αποτέλεσμα σε καθαρό JSON:
-    {{
-        "concept": "...",
-        "mood": "...",
+    Return strict JSON matching this schema:
+    {
+        "brand": "Detected Brand",
+        "model": "Detected Model",
+        "colorway": "Detected Colorway",
+        "concept": "Unique creative concept name",
+        "mood": "Visual mood/lighting description",
         "scenes": [
-            {{"time": "0-5s", "camera": "...", "action": "..."}},
-            {{"time": "5-11s", "camera": "...", "action": "..."}},
-            {{"time": "11-16s", "camera": "...", "action": "..."}}
+            {"time": "0-5s", "camera": "...", "action": "..."},
+            {"time": "5-11s", "camera": "...", "action": "..."},
+            {"time": "11-16s", "camera": "...", "action": "..."}
         ],
-        "text_overlay": "...",
-        "music_vibe": "..."
-    }}
-    """
+        "text_overlay": "Engaging short text for video",
+        "music_vibe": "Audio style description"
+    }"""
     
-    contents = [prompt]
-    if image_bytes:
-        contents.insert(0, types.Part.from_bytes(data=image_bytes, mime_type=mime_type))
+    contents = [
+        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
+        prompt
+    ]
 
     response = client.models.generate_content(
         model="gemini-3.6-flash",
@@ -63,45 +89,44 @@ def generate_script_with_vision(brand, model, colorway, image_bytes=None, mime_t
     )
     return json.loads(response.text)
 
-# --- 2. UI της εφαρμογής ---
-uploaded_file = st.file_uploader("📷 Ανέβασε φωτογραφία παπουτσιού (Προαιρετικά για οπτική ανάλυση)", type=["jpg", "jpeg", "png", "webp"])
-
-if uploaded_file:
-    st.image(uploaded_file, caption="Προεπισκόπηση Παπουτσιού", width=300)
-
-col1, col2 = st.columns(2)
-with col1:
-    brand = st.text_input("Brand", placeholder="π.χ. Nike")
-with col2:
-    model = st.text_input("Model", placeholder="π.χ. Air Max")
-
-colorway = st.text_input("Colorway / Χρώμα", placeholder="π.χ. Black/White")
-
-if st.button("🚀 Σκηνοθέτησε το Βίντεο"):
-    if not brand or not model:
-        st.warning("⚠️ Συμπλήρωσε τουλάχιστον Brand και Model!")
+# Κουμπί Αυτοματισμού
+if st.button("🚀 Αυτόματη Ανίχνευση & Σκηνοθεσία Βίντεο", type="primary"):
+    if not uploaded_file:
+        st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
     else:
-        with st.spinner("Η φαντασία του Sneakerness δουλεύει..."):
-            img_bytes = uploaded_file.getvalue() if uploaded_file else None
+        with st.spinner("Ο σκηνοθέτης αναλύει το παπούτσι και σκέφτεται το σενάριο..."):
+            img_bytes = uploaded_file.getvalue()
             mime = "image/jpeg"
-            if uploaded_file and uploaded_file.name.lower().endswith(".png"): mime = "image/png"
-            elif uploaded_file and uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
+            if uploaded_file.name.lower().endswith(".png"): mime = "image/png"
+            elif uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
 
-            script = generate_script_with_vision(brand, model, colorway, img_bytes, mime)
+            script = generate_video_script_from_image(img_bytes, mime)
             st.session_state["script"] = script
-            st.success("Το σενάριο ετοιμάστηκε!")
+            st.session_state["brand_val"] = script.get("brand", "")
+            st.session_state["model_val"] = script.get("model", "")
+            st.session_state["colorway_val"] = script.get("colorway", "")
+            st.rerun()
 
-# --- 3. Προβολή Σεναρίου ---
+# 4. INPUT FIELDS (συμπληρώνονται αυτόματα αλλά μπορείς να τα αλλάξεις)
+col1, col2, col3 = st.columns(3)
+with col1: 
+    brand = st.text_input("Brand", value=st.session_state["brand_val"])
+with col2: 
+    model_name = st.text_input("Model", value=st.session_state["model_val"])
+with col3: 
+    colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
+
+# 5. ΠΡΟΒΟΛΗ ΣΕΝΑΡΙΟΥ
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
-    st.success(f"💡 Concept: {script['concept']}")
-    st.write(f"**Mood:** {script['mood']}")
-    st.write(f"**Μουσική:** {script['music_vibe']}")
-    st.write(f"**Κείμενο (Overlay):** {script['text_overlay']}")
+    st.success(f"💡 **Concept:** {script.get('concept', '')}")
+    st.write(f"**Mood:** {script.get('mood', '')}")
+    st.write(f"**Μουσική:** {script.get('music_vibe', '')}")
+    st.write(f"**Κείμενο (Overlay):** {script.get('text_overlay', '')}")
     
     st.markdown("#### 🎬 Σκηνές Βίντεο (16s Timeline):")
-    for scene in script['scenes']:
-        st.info(f"**{scene['time']}** | Κίνηση: {scene['action']} *(Κάμερα: {scene['camera']})*")
+    for scene in script.get('scenes', []):
+        st.info(f"**{scene.get('time')}** | Κίνηση: {scene.get('action')} *(Κάμερα: {scene.get('camera')})*")
         
     st.download_button("📥 Κατέβασμα JSON Σεναρίου", json.dumps(script, ensure_ascii=False, indent=2), file_name="video_script.json")
