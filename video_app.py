@@ -10,7 +10,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVide
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Αυτόνομη γεννήτρια σεναρίων & Automated Video Renderer")
+st.subheader("Grok Video Polish & Automated Post-Production Engine")
 
 # API Key check
 api_key = os.getenv("GEMINI_API_KEY")
@@ -45,7 +45,7 @@ with col_reset:
 col_up, col_preview = st.columns([2, 1])
 with col_up:
     uploaded_file = st.file_uploader(
-        "📷 Ανέβασε φωτογραφία παπουτσιού (για το Σενάριο)", 
+        "📷 Ανέβασε φωτογραφία παπουτσιού (για παραγωγή σκηνοθετικού JSON)", 
         type=["jpg", "jpeg", "png", "webp"],
         key=f"uploader_{st.session_state['uploader_key']}"
     )
@@ -130,56 +130,55 @@ with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 5. VIDEO RENDERING SECTION (MoviePy)
+# 5. GROK VIDEO POST-PRODUCTION SECTION (MoviePy)
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
     st.success(f"💡 **Concept:** {script.get('concept', '')}")
-    st.write(f"**Overlay Text:** {script.get('text_overlay', '')}")
+    st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
     
-    st.markdown("### 🎬 Αυτόματο Video Rendering (MoviePy)")
-    raw_video_file = st.file_uploader("📥 Ανέβασε ένα Raw Βίντεο-Κλιπ (π.χ. από το κινητό σου)", type=["mp4", "mov"])
-    bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (MP3)", type=["mp3"])
+    st.markdown("### 🎬 Grok Video Polishing & Branding (MoviePy)")
+    grok_video_file = st.file_uploader("📥 Ανέβασε το τελικό ενιαίο βίντεο από το Grok (.mp4)", type=["mp4", "mov"])
+    bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (.mp3)", type=["mp3"])
 
-    if st.button("⚙️ Render Τελικού Βίντεο", type="primary"):
-        if not raw_video_file:
-            st.warning("⚠️ Ανέβασε πρώτα ένα raw βίντεο-κλιπ!")
+    if st.button("⚙️ Προσθήκη Μουσικής & Branding", type="primary"):
+        if not grok_video_file:
+            st.warning("⚠️ Ανέβασε πρώτα το βίντεο από το Grok!")
         else:
-            with st.spinner("Η Python μοντάρει το βίντεο (Rendering σε εξέλιξη)..."):
+            with st.spinner("Η Python μοντάρει το τελικό βίντεο (Rendering)..."):
                 try:
-                    # Αποθήκευση προσωρινών αρχείων
                     os.makedirs("temp", exist_ok=True)
-                    video_input_path = "temp/input_video.mp4"
+                    video_input_path = "temp/grok_video.mp4"
                     with open(video_input_path, "wb") as f:
-                        f.write(raw_video_file.getbuffer())
+                        f.write(grok_video_file.getbuffer())
 
                     audio_input_path = None
                     if bg_audio_file:
-                        audio_input_path = "temp/input_audio.mp3"
+                        audio_input_path = "temp/bg_audio.mp3"
                         with open(audio_input_path, "wb") as f:
                             f.write(bg_audio_file.getbuffer())
 
-                    output_path = "temp/final_sneakerness_video.mp4"
+                    output_path = "temp/final_sneakerness_ad.mp4"
 
-                    # 1. Φόρτωση βίντεο με MoviePy
+                    # 1. Φόρτωση βίντεο
                     video_clip = VideoFileClip(video_input_path)
 
-                    # 2. Προσθήκη ήχου αν υπάρχει
+                    # 2. Προσθήκη ήχου
                     if audio_input_path:
                         audio_clip = AudioFileClip(audio_input_path).subclip(0, min(video_clip.duration, AudioFileClip(audio_input_path).duration))
                         video_clip = video_clip.set_audio(audio_clip)
 
-                    # 3. Δημιουργία Text Overlay από το JSON
-                    text_content = script.get('text_overlay', 'Sneakerness.eu')
-                    txt_clip = TextClip(text_content, fontsize=50, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video_clip.w * 0.8, None))
-                    txt_clip = txt_clip.set_position('center').set_duration(video_clip.duration)
+                    # 3. Δημιουργία Text Overlay
+                    text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
+                    txt_clip = TextClip(text_content, fontsize=45, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video_clip.w * 0.85, None))
+                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).set_duration(video_clip.duration)
 
                     # 4. Σύνθεση και εξαγωγή
                     final_clip = CompositeVideoClip([video_clip, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
                     st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το βίντεο μονταρίστηκε αυτόματα!")
+                    st.success("🎉 Το βίντεο ολοκληρώθηκε και είναι έτοιμο!")
 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -188,8 +187,8 @@ if "script" in st.session_state:
         st.video(st.session_state["rendered_video"])
         with open(st.session_state["rendered_video"], "rb") as file:
             st.download_button(
-                label="📥 Κατέβασμα Τελικού MP4",
+                label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
                 data=file,
-                file_name="sneakerness_final_ad.mp4",
+                file_name="sneakerness_grok_final.mp4",
                 mime="video/mp4"
             )
