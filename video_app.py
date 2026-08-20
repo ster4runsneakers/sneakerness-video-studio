@@ -10,7 +10,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVide
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Grok Video Polish & Automated Post-Production Engine")
+st.subheader("Grok Action-Prompt Engine & Video Post-Production")
 
 # API Key check
 api_key = os.getenv("GEMINI_API_KEY")
@@ -45,7 +45,7 @@ with col_reset:
 col_up, col_preview = st.columns([2, 1])
 with col_up:
     uploaded_file = st.file_uploader(
-        "📷 Ανέβασε φωτογραφία παπουτσιού (για παραγωγή σκηνοθετικού JSON)", 
+        "📷 Ανέβασε φωτογραφία παπουτσιού", 
         type=["jpg", "jpeg", "png", "webp"],
         key=f"uploader_{st.session_state['uploader_key']}"
     )
@@ -53,28 +53,38 @@ with col_preview:
     if uploaded_file is not None:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
-# 3. SCRIPT GENERATION FUNCTION
+# 3. ACTION & LIFESTYLE SCRIPT GENERATION FUNCTION (GROK OPTIMIZED)
 def generate_video_script_from_image(image_bytes, mime_type):
-    sys_instruction = """Είσαι ο βραβευμένος σκηνοθέτης διαφημίσεων του Sneakerness.eu. 
-    Αναλύεις τη φωτογραφία του παπουτσιού και δημιουργείς ένα πρωτότυπο, κινηματογραφικό σενάριο 16 δευτερολέπτων για TikTok/Reels. 
-    Επιστρέφεις αποκλειστικά έγκυρο JSON."""
+    sys_instruction = """You are an elite commercial video director for Sneakerness.eu. 
+    Your goal is to write dynamic, cinematic 16-second TikTok/Reels video prompts optimized for Grok AI Video Generator.
+    FOCUS ON REAL HUMAN MOVEMENT, LIFESTYLE, AND ACTION SCENES: street basketball, urban walking, daily shifts, athletes, and realistic foot movements wearing the sneakers.
+    ALWAYS include prompt templates tailored for direct copy-pasting into Grok AI. Return strictly JSON."""
     
-    prompt = """Examine the provided sneaker image. Identify the brand, model, and colorway, and create a 16-second cinematic video script.
-    
+    prompt = """Examine the provided sneaker image. Identify the brand, model, and colorway, and create a 16-second cinematic video script featuring real people in dynamic action scenes.
+
     Return strict JSON matching this schema:
     {
         "brand": "Detected Brand",
         "model": "Detected Model",
         "colorway": "Detected Colorway",
-        "concept": "Unique creative concept name",
-        "mood": "Visual mood/lighting description",
-        "scenes": [
-            {"time": "0-5s", "camera": "...", "action": "..."},
-            {"time": "5-11s", "camera": "...", "action": "..."},
-            {"time": "11-16s", "camera": "...", "action": "..."}
+        "concept": "Creative concept name (e.g. Street Culture, Game Day, Urban Shift)",
+        "mood": "Lighting and emotional mood description",
+        "grok_prompts": [
+            {
+                "time": "0-5s (Hook / Action)", 
+                "grok_prompt": "Cinematic action shot: A person wearing the [Brand Model] sneakers performing an athletic move or walking on concrete, low angle camera tracking feet..."
+            },
+            {
+                "time": "5-11s (Lifestyle / Motion)", 
+                "grok_prompt": "Lifestyle shot: Person sitting or moving naturally in an urban setting wearing [Brand Model], detailed focus on posture and sneaker flexibility..."
+            },
+            {
+                "time": "11-16s (Close-up / Climax)", 
+                "grok_prompt": "Close-up macro tracking shot: Fast footwork transition on basketball court floor showing sole grip and cushioning..."
+            }
         ],
-        "text_overlay": "Engaging short text for video",
-        "music_vibe": "Audio style description"
+        "text_overlay": "Engaging short text overlay",
+        "music_vibe": "Recommended audio track genre"
     }"""
     
     contents = [
@@ -102,13 +112,13 @@ def generate_video_script_from_image(image_bytes, mime_type):
         except Exception:
             time.sleep(1)
             
-    raise Exception("Model failed to generate script.")
+    raise Exception("Model failed to generate action script.")
 
-if st.button("🚀 Αυτόματη Ανίχνευση & Σκηνοθεσία", type="primary"):
+if st.button("🚀 Δημιουργία Action Prompts για Grok", type="primary"):
     if not uploaded_file:
         st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
     else:
-        with st.spinner("Ο σκηνοθέτης αναλύει το παπούτσι..."):
+        with st.spinner("Ο σκηνοθέτης δημιουργεί prompts με ανθρώπους & κίνηση..."):
             try:
                 img_bytes = uploaded_file.getvalue()
                 mime = "image/jpeg"
@@ -130,22 +140,29 @@ with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 5. GROK VIDEO POST-PRODUCTION SECTION (MoviePy)
+# 5. GROK PROMPTS DISPLAY & MOVIEPY POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
     st.success(f"💡 **Concept:** {script.get('concept', '')}")
+    st.write(f"**Mood:** {script.get('mood', '')}")
     st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
     
+    st.markdown("#### 🤖 Prompts για το Grok (Ανθρώπινη Κίνηση & Δράση):")
+    for item in script.get('grok_prompts', []):
+        st.write(f"**{item.get('time')}**")
+        st.code(item.get('grok_prompt'), language="text")
+        
+    st.markdown("---")
     st.markdown("### 🎬 Grok Video Polishing & Branding (MoviePy)")
-    grok_video_file = st.file_uploader("📥 Ανέβασε το τελικό ενιαίο βίντεο από το Grok (.mp4)", type=["mp4", "mov"])
+    grok_video_file = st.file_uploader("📥 Ανέβασε το τελικό βίντεο από το Grok (.mp4)", type=["mp4", "mov"])
     bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (.mp3)", type=["mp3"])
 
     if st.button("⚙️ Προσθήκη Μουσικής & Branding", type="primary"):
         if not grok_video_file:
             st.warning("⚠️ Ανέβασε πρώτα το βίντεο από το Grok!")
         else:
-            with st.spinner("Η Python μοντάρει το τελικό βίντεο (Rendering)..."):
+            with st.spinner("Η Python μοντάρει το τελικό βίντεο..."):
                 try:
                     os.makedirs("temp", exist_ok=True)
                     video_input_path = "temp/grok_video.mp4"
@@ -160,35 +177,12 @@ if "script" in st.session_state:
 
                     output_path = "temp/final_sneakerness_ad.mp4"
 
-                    # 1. Φόρτωση βίντεο
                     video_clip = VideoFileClip(video_input_path)
 
-                    # 2. Προσθήκη ήχου
                     if audio_input_path:
                         audio_clip = AudioFileClip(audio_input_path).subclip(0, min(video_clip.duration, AudioFileClip(audio_input_path).duration))
                         video_clip = video_clip.set_audio(audio_clip)
 
-                    # 3. Δημιουργία Text Overlay
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
                     txt_clip = TextClip(text_content, fontsize=45, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video_clip.w * 0.85, None))
-                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).set_duration(video_clip.duration)
-
-                    # 4. Σύνθεση και εξαγωγή
-                    final_clip = CompositeVideoClip([video_clip, txt_clip])
-                    final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
-
-                    st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το βίντεο ολοκληρώθηκε και είναι έτοιμο!")
-
-                except Exception as e:
-                    st.error(f"❌ Σφάλμα rendering: {str(e)}")
-
-    if "rendered_video" in st.session_state and os.path.exists(st.session_state["rendered_video"]):
-        st.video(st.session_state["rendered_video"])
-        with open(st.session_state["rendered_video"], "rb") as file:
-            st.download_button(
-                label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
-                data=file,
-                file_name="sneakerness_grok_final.mp4",
-                mime="video/mp4"
-            )
+                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).
