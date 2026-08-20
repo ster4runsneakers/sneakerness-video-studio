@@ -95,9 +95,10 @@ with col_preview:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
 # 4. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
-def generate_category_script(image_bytes, mime_type):
-    sys_instruction = """You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
+def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 Vertical (TikTok/Reels)"):
+    sys_instruction = f"""You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
     Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script for Grok AI.
+    The current target video format is: {target_aspect_ratio}. Ensure camera directions reflect this orientation.
     
     STRICT CATEGORY & STYLING MAPPING RULES:
     1. BASKETBALL (e.g. Kobe, Kyrie, Jordan, LeBron):
@@ -175,6 +176,12 @@ def generate_category_script(image_bytes, mime_type):
             
     raise Exception("Model failed to generate category script.")
 
+# 5. ASPECT RATIO SELECTOR
+aspect_choice = st.selectbox(
+    "📐 Επιλογή Aspect Ratio (Διάσταση Βίντεο)", 
+    ["9:16 Vertical (TikTok / Reels / Shorts)", "16:9 Landscape (YouTube / Banner)", "1:1 Square (Instagram Post)"]
+)
+
 if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
     if not uploaded_file:
         st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
@@ -186,7 +193,7 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
                 if uploaded_file.name.lower().endswith(".png"): mime = "image/png"
                 elif uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
 
-                script = generate_category_script(img_bytes, mime)
+                script = generate_category_script(img_bytes, mime, aspect_choice)
                 st.session_state["script"] = script
                 st.session_state["brand_val"] = script.get("brand", "")
                 st.session_state["model_val"] = script.get("model", "")
@@ -195,13 +202,13 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
             except Exception as err:
                 st.error(f"❌ Σφάλμα: {str(err)}")
 
-# 5. EDITABLE FIELDS
+# 6. EDITABLE FIELDS
 col1, col2, col3 = st.columns(3)
 with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 6. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
+# 7. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
@@ -223,7 +230,7 @@ if "script" in st.session_state:
         st.code(item.get('grok_prompt'), language="text")
         
     st.markdown("---")
-    st.markdown("### 🎬 Multi-Clip Merger & Branding (MoviePy)")
+    st.markdown("### 🎬 Multi-Clip Merger & Aspect Ratio Crop (MoviePy)")
     grok_video_files = st.file_uploader(
         "📥 Ανέβασε έως 6 βίντεο-κλιπ (.mp4)", 
         type=["mp4", "mov"], 
@@ -231,30 +238,50 @@ if "script" in st.session_state:
     )
     bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (.mp3)", type=["mp3"])
 
-    if st.button("⚙️ Σύνθεση Κλιπ, Μουσικής & Branding", type="primary"):
+    if st.button("⚙️ Σύνθεση Κλιπ, Resize & Branding", type="primary"):
         if not grok_video_files or len(grok_video_files) == 0:
             st.warning("⚠️ Ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
         elif len(grok_video_files) > 6:
             st.error("❌ Παρακαλώ ανέβασε μέχρι 6 βίντεο-κλιπ.")
         else:
-            with st.spinner("Η Python συνθέτει τα κλιπ και μοντάρει το τελικό βίντεο..."):
+            with st.spinner("Η Python προσαρμόζει τις διαστάσεις και μοντάρει το τελικό βίντεο..."):
                 try:
                     os.makedirs("temp", exist_ok=True)
                     loaded_clips = []
 
-                    # 1. Φόρτωση και αποθήκευση όλων των κλιπ στη σειρά
+                    # 1. Υπολογισμός Διαστάσεων βάσει Aspect Ratio
+                    if "9:16" in aspect_choice:
+                        target_w, target_h = 1080, 1920
+                    elif "16:9" in aspect_choice:
+                        target_w, target_h = 1920, 1080
+                    else:  # 1:1
+                        target_w, target_h = 1080, 1080
+
+                    # 2. Φόρτωση, Auto-Crop & Resize κάθε κλιπ
                     for idx, vfile in enumerate(grok_video_files):
                         vpath = f"temp/input_clip_{idx}.mp4"
                         with open(vpath, "wb") as f:
                             f.write(vfile.getbuffer())
                         clip = VideoFileClip(vpath)
-                        loaded_clips.append(clip)
 
-                    # 2. Ενωση των βίντεο στη σειρά (Concatenation)
+                        # Smart Crop / Resize στο επιλεγμένο Aspect Ratio
+                        clip_aspect = clip.w / clip.h
+                        target_aspect = target_w / target_h
+
+                        if clip_aspect > target_aspect:
+                            new_w = int(clip.h * target_aspect)
+                            clip_cropped = clip.crop(x1=(clip.w - new_w) / 2, width=new_w, height=clip.h)
+                        else:
+                            new_h = int(clip.w / target_aspect)
+                            clip_cropped = clip.crop(y1=(clip.h - new_h) / 2, width=clip.w, height=new_h)
+
+                        clip_resized = clip_cropped.resize((target_w, target_h))
+                        loaded_clips.append(clip_resized)
+
+                    # 3. Ενωση των βίντεο στη σειρά
                     merged_video = concatenate_videoclips(loaded_clips, method="compose")
 
-                    # 3. Φόρτωση ήχου αν υπάρχει
-                    audio_input_path = None
+                    # 4. Φόρτωση ήχου
                     if bg_audio_file:
                         audio_input_path = "temp/bg_audio.mp3"
                         with open(audio_input_path, "wb") as f:
@@ -262,23 +289,22 @@ if "script" in st.session_state:
                         audio_clip = AudioFileClip(audio_input_path).subclip(0, min(merged_video.duration, AudioFileClip(audio_input_path).duration))
                         merged_video = merged_video.set_audio(audio_clip)
 
-                    # 4. Δημιουργία overlay μέσω PIL
+                    # 5. Δημιουργία overlay μέσω PIL
                     output_path = "temp/final_sneakerness_ad.mp4"
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
                     overlay_img_path = create_text_overlay_image(text_content, merged_video.w, merged_video.h)
                     
                     txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
 
-                    # 5. Τελική σύνθεση & Export
+                    # 6. Τελική σύνθεση & Export
                     final_clip = CompositeVideoClip([merged_video, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
-                    # Καθαρισμός μνήμης clips
                     for c in loaded_clips: c.close()
                     merged_video.close()
 
                     st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το πολυ-καναλικό βίντεο συντέθηκε με επιτυχία!")
+                    st.success("🎉 Το βίντεο προσαρμόστηκε στις επιλεγμένες διαστάσεις και ολοκληρώθηκε!")
 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -289,6 +315,6 @@ if "script" in st.session_state:
             st.download_button(
                 label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
                 data=file,
-                file_name="sneakerness_multi_clip_final.mp4",
+                file_name="sneakerness_final_aspect.mp4",
                 mime="video/mp4"
             )
