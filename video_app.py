@@ -6,6 +6,10 @@ import os
 import time
 from PIL import Image, ImageDraw, ImageFont
 
+# FIX FOR PILLOW 10+ COMPATIBILITY WITH MOVIEPY
+if not hasattr(Image, 'ANTIALIAS'):
+    Image.ANTIALIAS = Image.Resampling.LANCZOS
+
 # Robust MoviePy Imports
 try:
     from moviepy.editor import VideoFileClip, AudioFileClip, ImageClip, CompositeVideoClip, concatenate_videoclips
