@@ -1,4 +1,5 @@
 streamlit
 google-genai
 python-dotenv
-moviepy
+moviepy==1.0.3
+pillow
