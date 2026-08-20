@@ -10,7 +10,7 @@ from moviepy.editor import VideoFileClip, AudioFileClip, TextClip, CompositeVide
 st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Grok Action-Prompt Engine & Video Post-Production")
+st.subheader("Category-Aware Archetype Engine & Grok Prompt Director")
 
 # API Key check
 api_key = os.getenv("GEMINI_API_KEY")
@@ -53,38 +53,58 @@ with col_preview:
     if uploaded_file is not None:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
-# 3. ACTION & LIFESTYLE SCRIPT GENERATION FUNCTION (GROK OPTIMIZED)
-def generate_video_script_from_image(image_bytes, mime_type):
-    sys_instruction = """You are an elite commercial video director for Sneakerness.eu. 
-    Your goal is to write dynamic, cinematic 16-second TikTok/Reels video prompts optimized for Grok AI Video Generator.
-    FOCUS ON REAL HUMAN MOVEMENT, LIFESTYLE, AND ACTION SCENES: street basketball, urban walking, daily shifts, athletes, and realistic foot movements wearing the sneakers.
-    ALWAYS include prompt templates tailored for direct copy-pasting into Grok AI. Return strictly JSON."""
+# 3. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
+def generate_category_script(image_bytes, mime_type):
+    sys_instruction = """You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
+    Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script for Grok AI.
     
-    prompt = """Examine the provided sneaker image. Identify the brand, model, and colorway, and create a 16-second cinematic video script featuring real people in dynamic action scenes.
+    STRICT CATEGORY & STYLING MAPPING RULES:
+    1. BASKETBALL (e.g. Kobe, Kyrie, Jordan, LeBron):
+       - Outfit: Oversized streetwear jersey/mesh shorts, compression tights, athletic socks.
+       - Environment: Hardwood court, outdoor concrete playground with chain-link fences.
+       - Action: Crossover dribble, jump shot, tied laces before entering court, casual walking with ball under arm.
+    2. PERFORMANCE RUNNING (e.g. HOKA, Brooks, Asics Gel-Nimbus, Nike Pegasus):
+       - Outfit: Technical running shorts, sweat-wicking athletic hoodie or tank, modern running socks.
+       - Environment: Wet asphalt street at dawn, urban park path, running track.
+       - Action: Morning stretch, dynamic footwork pace, walking after a long shift/run touching aching feet.
+    3. RETRO / LIFESTYLE (e.g. Adidas Samba, New Balance 550/2002R, Puma Suede):
+       - Outfit: Relaxed fit denim jeans or cargo trousers, oversized clean hoodie/t-shirt, tote bag.
+       - Environment: Urban coffee shop entrance, Metro stairs, minimalist concrete sidewalk.
+       - Action: Walking down city steps, sitting on outdoor bench tying shoe, casual street navigation.
+    4. OUTDOOR / TRAIL (e.g. Salomon XT-6, HOKA Speedgoat, Nike ACG):
+       - Outfit: GORE-TEX jacket, utility cargo pants, outdoor crew socks.
+       - Environment: Gravel trail, wet rock path, urban rainy street.
+       - Action: Walking over rough terrain, stepping through shallow puddle showing water resistance.
+
+    Return ONLY a valid JSON object."""
+    
+    prompt = """Examine the provided sneaker image and generate a script based on its archetype.
 
     Return strict JSON matching this schema:
     {
         "brand": "Detected Brand",
         "model": "Detected Model",
         "colorway": "Detected Colorway",
-        "concept": "Creative concept name (e.g. Street Culture, Game Day, Urban Shift)",
-        "mood": "Lighting and emotional mood description",
+        "category": "Detected Category (Basketball / Running / Lifestyle / Trail)",
+        "outfit_style": "Detailed outfit description (clothing, socks, pants)",
+        "concept": "Creative concept title",
+        "mood": "Lighting and aesthetic vibe",
         "grok_prompts": [
             {
-                "time": "0-5s (Hook / Action)", 
-                "grok_prompt": "Cinematic action shot: A person wearing the [Brand Model] sneakers performing an athletic move or walking on concrete, low angle camera tracking feet..."
+                "time": "0-5s (Action & Styling)", 
+                "grok_prompt": "Cinematic shot: A person wearing [exact outfit] and [Brand Model] performing [category action] in [category environment]..."
             },
             {
-                "time": "5-11s (Lifestyle / Motion)", 
-                "grok_prompt": "Lifestyle shot: Person sitting or moving naturally in an urban setting wearing [Brand Model], detailed focus on posture and sneaker flexibility..."
+                "time": "5-11s (Lifestyle Context)", 
+                "grok_prompt": "Tracking shot: Close-up on feet moving naturally in [category environment], showing [outfit details] and sneaker flexibility..."
             },
             {
-                "time": "11-16s (Close-up / Climax)", 
-                "grok_prompt": "Close-up macro tracking shot: Fast footwork transition on basketball court floor showing sole grip and cushioning..."
+                "time": "11-16s (Climax & Footwork)", 
+                "grok_prompt": "Dynamic low-angle camera: Detailed footwork movement showing [Brand Model] in action..."
             }
         ],
-        "text_overlay": "Engaging short text overlay",
-        "music_vibe": "Recommended audio track genre"
+        "text_overlay": "Short high-converting text overlay",
+        "music_vibe": "Category-matched audio style (e.g., Hip-hop beat, Lofi, Synthwave, Energetic rock)"
     }"""
     
     contents = [
@@ -112,20 +132,20 @@ def generate_video_script_from_image(image_bytes, mime_type):
         except Exception:
             time.sleep(1)
             
-    raise Exception("Model failed to generate action script.")
+    raise Exception("Model failed to generate category script.")
 
-if st.button("🚀 Δημιουργία Action Prompts για Grok", type="primary"):
+if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
     if not uploaded_file:
         st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
     else:
-        with st.spinner("Ο σκηνοθέτης δημιουργεί prompts με ανθρώπους & κίνηση..."):
+        with st.spinner("Ο σκηνοθέτης αναλύει την κατηγορία, το ντύσιμο και το στυλ..."):
             try:
                 img_bytes = uploaded_file.getvalue()
                 mime = "image/jpeg"
                 if uploaded_file.name.lower().endswith(".png"): mime = "image/png"
                 elif uploaded_file.name.lower().endswith(".webp"): mime = "image/webp"
 
-                script = generate_video_script_from_image(img_bytes, mime)
+                script = generate_category_script(img_bytes, mime)
                 st.session_state["script"] = script
                 st.session_state["brand_val"] = script.get("brand", "")
                 st.session_state["model_val"] = script.get("model", "")
@@ -140,15 +160,23 @@ with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 5. GROK PROMPTS DISPLAY & MOVIEPY POST-PRODUCTION
+# 5. SCRIPT DISPLAY & POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     st.markdown("---")
+    
+    col_cat, col_outfit = st.columns(2)
+    with col_cat:
+        st.info(f"🏷️ **Κατηγορία:** {script.get('category', 'Lifestyle')}")
+    with col_outfit:
+        st.info(f"👕 **Προτεινόμενο Outfit:** {script.get('outfit_style', '')}")
+
     st.success(f"💡 **Concept:** {script.get('concept', '')}")
     st.write(f"**Mood:** {script.get('mood', '')}")
     st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
+    st.write(f"**Μουσικό Vibe:** {script.get('music_vibe', '')}")
     
-    st.markdown("#### 🤖 Prompts για το Grok (Ανθρώπινη Κίνηση & Δράση):")
+    st.markdown("#### 🤖 Prompts για το Grok (Εξειδικευμένο Outfit & Δράση):")
     for item in script.get('grok_prompts', []):
         st.write(f"**{item.get('time')}**")
         st.code(item.get('grok_prompt'), language="text")
@@ -185,4 +213,23 @@ if "script" in st.session_state:
 
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
                     txt_clip = TextClip(text_content, fontsize=45, color='white', stroke_color='black', stroke_width=2, method='caption', size=(video_clip.w * 0.85, None))
-                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).
+                    txt_clip = txt_clip.set_position(('center', 'top')).set_start(0).set_duration(video_clip.duration)
+
+                    final_clip = CompositeVideoClip([video_clip, txt_clip])
+                    final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
+
+                    st.session_state["rendered_video"] = output_path
+                    st.success("🎉 Το βίντεο ολοκληρώθηκε!")
+
+                except Exception as e:
+                    st.error(f"❌ Σφάλμα rendering: {str(e)}")
+
+    if "rendered_video" in st.session_state and os.path.exists(st.session_state["rendered_video"]):
+        st.video(st.session_state["rendered_video"])
+        with open(st.session_state["rendered_video"], "rb") as file:
+            st.download_button(
+                label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
+                data=file,
+                file_name="sneakerness_grok_final.mp4",
+                mime="video/mp4"
+            )
