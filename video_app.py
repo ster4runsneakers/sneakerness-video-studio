@@ -187,7 +187,7 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
     }"""
     
     contents = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt]
-    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    models_to_try = ["gemini-2.5-flash", "gemini-2.0-flash", "gemini-1.5-flash"]
     
     for model_item in models_to_try:
         try:
