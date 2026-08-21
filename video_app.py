@@ -57,7 +57,7 @@ def clear_all_fields():
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
 
-# 2. HELPER FUNCTION: TEXT OVERLAY IMAGE
+# 2. HELPER FUNCTION: UNIVERSAL TEXT OVERLAY IMAGE
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
@@ -95,7 +95,6 @@ def create_text_overlay_image(text, width, height):
     chars_per_line = max(8, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
 
-    # Διπλή επιβεβαίωση ότι καμία γραμμή δεν ξεπερνά το max_text_width
     for line in wrapped_lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         line_w = bbox[2] - bbox[0]
@@ -108,7 +107,6 @@ def create_text_overlay_image(text, width, height):
             bbox = draw.textbbox((0, 0), line, font=font)
             line_w = bbox[2] - bbox[0]
 
-    # Re-wrap με το τελικό font size
     avg_char_width = font_size * 0.55
     chars_per_line = max(8, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
@@ -143,6 +141,7 @@ def create_text_overlay_image(text, width, height):
     overlay_path = "temp/text_overlay.png"
     img.save(overlay_path)
     return overlay_path
+
 # 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE (META MUSICGEN)
 def generate_ai_music_hf(music_prompt):
     """Παράγει δωρεάν AI background music μέσω του Meta MusicGen στο Hugging Face"""
@@ -200,7 +199,7 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
     Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script.
     Format: {target_aspect_ratio}.
     Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words).
-    Provide a 'music_prompt' (in English) optimized for Meta MusicGen to create an algorithmic viral background beat (e.g., 'energetic hip hop beat, 115 bpm, punchy kick, trendy synth line for fashion reels').
+    Provide a 'music_prompt' (in English) optimized for Meta MusicGen to create an algorithmic viral background beat (e.g., 'energetic hip hop beat, 115 bpm, punchy kick, trendy synth line for fashion reels'). Do not request text overlays or letters in the video clips.
     
     STRICT CATEGORY & STYLING MAPPING RULES:
     1. BASKETBALL: Oversized streetwear jersey, hardwood court, crossover dribble.
@@ -223,9 +222,9 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
         "mood": "Lighting and aesthetic vibe",
         "music_prompt": "Specific music prompt for Meta MusicGen AI",
         "grok_prompts": [
-            {"time": "0-5s", "grok_prompt": "Cinematic shot..."},
-            {"time": "5-11s", "grok_prompt": "Tracking shot..."},
-            {"time": "11-16s", "grok_prompt": "Dynamic low-angle camera..."}
+            {"time": "0-5s", "grok_prompt": "Cinematic shot... (no text)"},
+            {"time": "5-11s", "grok_prompt": "Tracking shot... (no text)"},
+            {"time": "11-16s", "grok_prompt": "Dynamic low-angle camera... (no text)"}
         ],
         "text_overlay": "Short text overlay"
     }"""
@@ -332,22 +331,27 @@ if "script" in st.session_state:
                     elif "16:9" in aspect_choice: target_w, target_h = 1920, 1080
                     else: target_w, target_h = 1080, 1080
 
+                    # Smart Crop / Resize στο επιλεγμένο Aspect Ratio
+                    target_aspect = target_w / target_h
+
                     for idx, vfile in enumerate(grok_video_files):
                         vpath = f"temp/input_clip_{idx}.mp4"
                         with open(vpath, "wb") as f: f.write(vfile.getbuffer())
                         clip = VideoFileClip(vpath)
 
                         clip_aspect = clip.w / clip.h
-                        target_aspect = target_w / target_h
 
-                        if clip_aspect > target_aspect:
-                            new_w = int(clip.h * target_aspect)
-                            clip_cropped = clip.crop(x1=(clip.w - new_w) / 2, width=new_w, height=clip.h)
-                        else:
-                            new_h = int(clip.w / target_aspect)
-                            clip_cropped = clip.crop(y1=(clip.h - new_h) / 2, width=clip.w, height=new_h)
+                        if abs(clip_aspect - target_aspect) > 0.01:
+                            if clip_aspect > target_aspect:
+                                new_w = int(clip.h * target_aspect)
+                                crop_x1 = int((clip.w - new_w) / 2)
+                                clip = clip.crop(x1=crop_x1, width=new_w, height=clip.h)
+                            else:
+                                new_h = int(clip.w / target_aspect)
+                                crop_y1 = int((clip.h - new_h) / 2)
+                                clip = clip.crop(y1=crop_y1, width=clip.w, height=new_h)
 
-                        clip_resized = clip_cropped.resize((target_w, target_h))
+                        clip_resized = clip.resize((target_w, target_h))
                         loaded_clips.append(clip_resized)
 
                     merged_video = concatenate_videoclips(loaded_clips, method="compose")
