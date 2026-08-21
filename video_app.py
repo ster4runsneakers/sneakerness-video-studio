@@ -1,11 +1,16 @@
-import streamlit as st
-import json
-from google import genai
-from google.genai import types
+# video_app.py - Sneakerness Video Studio & Multi-Clip Engine (2026 Edition)
 import os
+import json
 import time
 import textwrap
+from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
+
+load_dotenv()
+
+import streamlit as st
+from google import genai
+from google.genai import types
 
 # FIX FOR PILLOW 10+ COMPATIBILITY WITH MOVIEPY
 if not hasattr(Image, 'ANTIALIAS'):
@@ -22,10 +27,10 @@ except ImportError:
     from moviepy.video.compositing.concatenate import concatenate_videoclips
 
 # Ρύθμιση σελίδας
-st.set_page_config(page_title="Sneakerness Video Studio", layout="centered")
+st.set_page_config(page_title="Sneakerness Video Studio", page_icon="🎬", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Category-Aware Archetype Engine & Multi-Clip Video Merger")
+st.subheader("Category-Aware Archetype Engine & Multi-Clip Video Merger (2026)")
 
 # API Key check
 api_key = os.getenv("GEMINI_API_KEY")
@@ -61,12 +66,12 @@ def create_text_overlay_image(text, width, height):
     font_size = int(height * 0.035) if height > width else int(height * 0.05)
     
     try:
+        # Ψάχνουμε τη γραμματοσειρά τοπικά στο repo
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
     # 3. Αναδίπλωση κειμένου (Word Wrapping)
-    # Υπολογίζουμε πόσους χαρακτήρες χωράει κάθε γραμμή
     avg_char_width = font_size * 0.55
     chars_per_line = max(10, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
@@ -184,7 +189,8 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
         prompt
     ]
 
-    models_to_try = ["gemini-2.5-flash", "gemini-3.6-flash"]
+    # ΔΙΟΡΘΩΣΗ: Σύγχρονα μοντέλα API για το 2026
+    models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
     for model_item in models_to_try:
         try:
             response = client.models.generate_content(
@@ -241,23 +247,25 @@ with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway
 # 7. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
+    
     st.markdown("---")
-    
-    col_cat, col_outfit = st.columns(2)
-    with col_cat:
-        st.info(f"🏷️ **Κατηγορία:** {script.get('category', 'Lifestyle')}")
-    with col_outfit:
-        st.info(f"👕 **Προτεινόμενο Outfit:** {script.get('outfit_style', '')}")
+    tab1, tab2, tab3 = st.tabs(["🏷️ Category & Outfit", "💡 Concept & Mood", "🤖 AI Video Prompts"])
 
-    st.success(f"💡 **Concept:** {script.get('concept', '')}")
-    st.write(f"**Mood:** {script.get('mood', '')}")
-    st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
-    st.write(f"**Μουσικό Vibe:** {script.get('music_vibe', '')}")
-    
-    st.markdown("#### 🤖 Prompts για το Grok (Εξειδικευμένο Outfit & Δράση):")
-    for item in script.get('grok_prompts', []):
-        st.write(f"**{item.get('time')}**")
-        st.code(item.get('grok_prompt'), language="text")
+    with tab1:
+        col_cat, col_outfit = st.columns(2)
+        col_cat.metric("🏷️ Κατηγορία", script.get('category', 'Lifestyle'))
+        col_outfit.info(f"👕 **Outfit:** {script.get('outfit_style', '')}")
+
+    with tab2:
+        st.success(f"💡 **Concept:** {script.get('concept', '')}")
+        st.write(f"** Mood:** {script.get('mood', '')}")
+        st.write(f"** Μουσικό Vibe:** {script.get('music_vibe', '')}")
+
+    with tab3:
+        st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
+        for item in script.get('grok_prompts', []):
+            st.write(f"**{item.get('time')}**")
+            st.code(item.get('grok_prompt'), language="text")
         
     st.markdown("---")
     st.markdown("### 🎬 Multi-Clip Merger & Aspect Ratio Crop (MoviePy)")
@@ -274,7 +282,7 @@ if "script" in st.session_state:
         elif len(grok_video_files) > 6:
             st.error("❌ Παρακαλώ ανέβασε μέχρι 6 βίντεο-κλιπ.")
         else:
-            with st.spinner("Η Python προσαρμόζει τις διαστάσεις και μοντάρει το τελικό βίντεο..."):
+            with st.spinner("Η Python προσαρμόζει τις διαστάσεις και μοντάρει το τελικό βίντεο... Αυτό μπορεί να πάρει έως 1 λεπτό."):
                 try:
                     os.makedirs("temp", exist_ok=True)
                     loaded_clips = []
@@ -308,7 +316,7 @@ if "script" in st.session_state:
                         clip_resized = clip_cropped.resize((target_w, target_h))
                         loaded_clips.append(clip_resized)
 
-                    # 3. Ενωση των βίντεο στη σειρά
+                    # 3. Ένωση των βίντεο στη σειρά
                     merged_video = concatenate_videoclips(loaded_clips, method="compose")
 
                     # 4. Φόρτωση ήχου
@@ -330,8 +338,11 @@ if "script" in st.session_state:
                     final_clip = CompositeVideoClip([merged_video, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
+                    # Κλείσιμο clips για αποδέσμευση πόρων
                     for c in loaded_clips: c.close()
                     merged_video.close()
+                    txt_clip.close()
+                    if bg_audio_file: audio_clip.close()
 
                     st.session_state["rendered_video"] = output_path
                     st.success("🎉 Το βίντεο προσαρμόστηκε στις επιλεγμένες διαστάσεις και ολοκληρώθηκε!")
