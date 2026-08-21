@@ -1,7 +1,8 @@
-# video_app.py - Sneakerness Video Studio (Full Campaign & Quick Video Editor)
+# video_app.py - Sneakerness Video Studio (Fixed Rendering & Clean Overlay)
 import os
 import json
 import time
+import shutil
 import textwrap
 import requests
 from dotenv import load_dotenv
@@ -44,7 +45,16 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-# 1. INITIALIZE SESSION STATE
+# 1. HELPER FUNCTION: CLEAN TEMP FOLDER
+def reset_temp_dir():
+    if os.path.exists("temp"):
+        try:
+            shutil.rmtree("temp")
+        except Exception:
+            pass
+    os.makedirs("temp", exist_ok=True)
+
+# 2. INITIALIZE SESSION STATE
 if "brand_val" not in st.session_state: st.session_state["brand_val"] = ""
 if "model_val" not in st.session_state: st.session_state["model_val"] = ""
 if "colorway_val" not in st.session_state: st.session_state["colorway_val"] = ""
@@ -57,26 +67,28 @@ def clear_all_fields():
     st.session_state["uploader_key"] = st.session_state.get("uploader_key", 0) + 1
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
+    if "quick_rendered_video" in st.session_state: del st.session_state["quick_rendered_video"]
+    reset_temp_dir()
 
-# 2. HELPER FUNCTION: UNIVERSAL TEXT OVERLAY IMAGE
+# 3. HELPER FUNCTION: CLEAN SINGLE TEXT OVERLAY IMAGE
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     aspect_ratio = width / height
     
-    if aspect_ratio < 0.8: # 9:16 Vertical
-        top_margin_ratio = 0.12
-        max_width_ratio = 0.75
-        base_font_scale = 0.040
+    if aspect_ratio < 0.8: # 9:16 Vertical (TikTok/Reels)
+        top_margin_ratio = 0.10
+        max_width_ratio = 0.70
+        base_font_scale = 0.038
     elif aspect_ratio > 1.2: # 16:9 Landscape
+        top_margin_ratio = 0.06
+        max_width_ratio = 0.60
+        base_font_scale = 0.042
+    else: # 1:1 Square
         top_margin_ratio = 0.07
         max_width_ratio = 0.65
-        base_font_scale = 0.045
-    else: # 1:1 Square
-        top_margin_ratio = 0.08
-        max_width_ratio = 0.70
-        base_font_scale = 0.042
+        base_font_scale = 0.040
 
     max_text_width = int(width * max_width_ratio)
     min_dim = min(width, height)
@@ -88,7 +100,7 @@ def create_text_overlay_image(text, width, height):
         font = ImageFont.load_default()
 
     avg_char_width = font_size * 0.55
-    chars_per_line = max(8, int(max_text_width / avg_char_width))
+    chars_per_line = max(6, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
 
     for line in wrapped_lines:
@@ -104,10 +116,10 @@ def create_text_overlay_image(text, width, height):
             line_w = bbox[2] - bbox[0]
 
     avg_char_width = font_size * 0.55
-    chars_per_line = max(8, int(max_text_width / avg_char_width))
+    chars_per_line = max(6, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
 
-    line_padding = int(font_size * 0.25)
+    line_padding = int(font_size * 0.20)
     line_metrics = []
     
     for line in wrapped_lines:
@@ -128,18 +140,18 @@ def create_text_overlay_image(text, width, height):
         current_y += lh + line_padding
     
     os.makedirs("temp", exist_ok=True)
-    overlay_path = "temp/text_overlay.png"
+    overlay_path = f"temp/text_overlay_{int(time.time())}.png"
     img.save(overlay_path)
     return overlay_path
 
-# 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE
+# 4. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE
 def generate_ai_music_hf(music_prompt):
     if not hf_token:
         st.warning("⚠️ Δεν βρέθηκε το HF_TOKEN στα Secrets. Παράλειψη δημιουργίας AI Μουσικής.")
         return None
 
     os.makedirs("temp", exist_ok=True)
-    out_music_path = "temp/generated_ai_music.wav"
+    out_music_path = f"temp/generated_ai_music_{int(time.time())}.wav"
     
     API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
     headers = {"Authorization": f"Bearer {hf_token}"}
@@ -160,12 +172,11 @@ def generate_ai_music_hf(music_prompt):
     except Exception:
         return None
 
-# 4. HELPER FUNCTION: GENERATE AI VOICEOVER VIA GEMINI API
+# 5. HELPER FUNCTION: GENERATE AI VOICEOVER VIA GEMINI API
 def generate_ai_voiceover(text_prompt):
-    """Δημιουργεί αρχείο ήχου ομιλίας (Voiceover) μέσω Gemini API"""
     try:
         os.makedirs("temp", exist_ok=True)
-        out_audio_path = "temp/ai_voiceover.mp3"
+        out_audio_path = f"temp/ai_voiceover_{int(time.time())}.mp3"
         
         response = client.models.generate_content(
             model="gemini-2.0-flash",
@@ -185,7 +196,7 @@ def generate_ai_voiceover(text_prompt):
     except Exception:
         return None
 
-# 5. MODE SELECTOR IN UI
+# MODE SELECTOR IN UI
 app_mode = st.radio(
     "⚙️ Επιλογή Λειτουργίας Εφαρμογής:", 
     ["🚀 Mode 1: Full Campaign (Φωτογραφία -> Prompts -> Video Merger)", 
@@ -222,7 +233,7 @@ if "Mode 1" in app_mode:
         sys_instruction = f"""You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
         Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script.
         Format: {target_aspect_ratio}.
-        Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words).
+        Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words). Do NOT put URLs in text_overlay.
         Provide a 'voiceover_script' (10-14 words) for the AI narrator.
         Provide a 'music_prompt' (in English) optimized for Meta MusicGen.
         
@@ -248,9 +259,9 @@ if "Mode 1" in app_mode:
             "voiceover_script": "Energetic 12-word narration for AI Voiceover",
             "music_prompt": "Specific music prompt for Meta MusicGen AI",
             "grok_prompts": [
-                {"time": "0-5s", "grok_prompt": "Cinematic shot... (no text)"},
-                {"time": "5-11s", "grok_prompt": "Tracking shot... (no text)"},
-                {"time": "11-16s", "grok_prompt": "Dynamic low-angle camera... (no text)"}
+                {"time": "0-5s", "grok_prompt": "Cinematic shot... (no text, no letters)"},
+                {"time": "5-11s", "grok_prompt": "Tracking shot... (no text, no letters)"},
+                {"time": "11-16s", "grok_prompt": "Dynamic low-angle camera... (no text, no letters)"}
             ],
             "text_overlay": "Short text overlay"
         }"""
@@ -350,9 +361,9 @@ if "Mode 1" in app_mode:
             if not grok_video_files or len(grok_video_files) == 0:
                 st.warning("⚠️ Ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
             else:
-                with st.spinner("Η Python μοντάρει το βίντεο και παράγει τον AI Ήχο..."):
+                with st.spinner("Καθαρισμός cache & μοντάζ βίντεο..."):
                     try:
-                        os.makedirs("temp", exist_ok=True)
+                        reset_temp_dir()
                         loaded_clips = []
 
                         if "9:16" in aspect_choice: target_w, target_h = 1080, 1920
@@ -362,7 +373,7 @@ if "Mode 1" in app_mode:
                         target_aspect = target_w / target_h
 
                         for idx, vfile in enumerate(grok_video_files):
-                            vpath = f"temp/input_clip_{idx}.mp4"
+                            vpath = f"temp/input_clip_{idx}_{int(time.time())}.mp4"
                             with open(vpath, "wb") as f: f.write(vfile.getbuffer())
                             clip = VideoFileClip(vpath)
 
@@ -403,7 +414,6 @@ if "Mode 1" in app_mode:
                                 else:
                                     music_clip = music_clip.subclip(0, merged_video.duration)
                                 
-                                # Ducking: Χαμηλώνουμε τη μουσική αν υπάρχει ομιλία
                                 if use_ai_vo and len(audio_tracks) > 0:
                                     music_clip = music_clip.volumex(0.30)
                                 
@@ -414,7 +424,7 @@ if "Mode 1" in app_mode:
                             merged_video = merged_video.set_audio(final_audio)
 
                         output_path = f"temp/final_sneakerness_ad_{int(time.time())}.mp4"
-                        text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
+                        text_content = script.get('text_overlay', 'Unleash Your Power')
                         overlay_img_path = create_text_overlay_image(text_content, target_w, target_h)
                         
                         txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
@@ -463,7 +473,7 @@ else:
     st.markdown("##### 🎵 Επιλογές AI Ήχου")
     
     q_use_music = st.checkbox("🎵 Προσθήκη AI Μουσικής (Meta MusicGen)", value=True)
-    custom_music_prompt = st.text_input("Περιγραφή Μουσικής (Prompt)", value="energetic fashion reel background beat, 115 bpm")
+    custom_music_prompt = st.text_input("Περιγραφή Μουσικής (Prompt)", value="energetic basketball commercial background beat, 115 bpm")
 
     q_use_vo = st.checkbox("🗣️ Προσθήκη AI Ομιλίας / Voiceover (Gemini)", value=False)
     custom_vo_script = st.text_area("Σενάριο Ομιλίας (English Script)", value="Discover the latest collection now at Sneakerness.eu")
@@ -472,10 +482,10 @@ else:
         if not raw_video_file:
             st.warning("⚠️ Παρακαλώ ανέβασε πρώτα ένα αρχείο βίντεο!")
         else:
-            with st.spinner("Επεξεργασία βίντεο, αλλαγή διαστάσεων & παραγωγή ήχου..."):
+            with st.spinner("Καθαρισμός cache & επεξεργασία βίντεο..."):
                 try:
-                    os.makedirs("temp", exist_ok=True)
-                    vpath = "temp/quick_input.mp4"
+                    reset_temp_dir()
+                    vpath = f"temp/quick_input_{int(time.time())}.mp4"
                     with open(vpath, "wb") as f: f.write(raw_video_file.getbuffer())
 
                     clip = VideoFileClip(vpath)
