@@ -62,19 +62,59 @@ def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    max_text_width = int(width * 0.80)
-    font_size = int(height * 0.035) if height > width else int(height * 0.05)
+    # 1. Υπολογισμός Aspect Ratio
+    aspect_ratio = width / height
+    
+    # 2. Καθορισμός Safe Margins & Max Text Width βάσει Aspect Ratio
+    if aspect_ratio < 0.8: # 9:16 Vertical (TikTok/Reels)
+        top_margin_ratio = 0.12
+        max_width_ratio = 0.75
+        base_font_scale = 0.040
+    elif aspect_ratio > 1.2: # 16:9 Landscape (YouTube)
+        top_margin_ratio = 0.07
+        max_width_ratio = 0.65
+        base_font_scale = 0.045
+    else: # 1:1 Square (Instagram Post)
+        top_margin_ratio = 0.08
+        max_width_ratio = 0.70
+        base_font_scale = 0.042
+
+    max_text_width = int(width * max_width_ratio)
+    
+    # 3. Δυναμικό Font Size βάσει της MIKΡΟΤΕΡΗΣ διάστασης
+    min_dim = min(width, height)
+    font_size = int(min_dim * base_font_scale)
     
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
+    # 4. Dynamic Refit: Μείωση font size αν το κείμενο είναι πολύ μεγάλο
     avg_char_width = font_size * 0.55
-    chars_per_line = max(10, int(max_text_width / avg_char_width))
+    chars_per_line = max(8, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
-    
-    line_padding = 10
+
+    # Διπλή επιβεβαίωση ότι καμία γραμμή δεν ξεπερνά το max_text_width
+    for line in wrapped_lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        line_w = bbox[2] - bbox[0]
+        while line_w > max_text_width and font_size > 12:
+            font_size -= 2
+            try:
+                font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+            except IOError:
+                font = ImageFont.load_default()
+            bbox = draw.textbbox((0, 0), line, font=font)
+            line_w = bbox[2] - bbox[0]
+
+    # Re-wrap με το τελικό font size
+    avg_char_width = font_size * 0.55
+    chars_per_line = max(8, int(max_text_width / avg_char_width))
+    wrapped_lines = textwrap.wrap(text, width=chars_per_line)
+
+    # 5. Υπολογισμός Metrics & Safe Placement
+    line_padding = int(font_size * 0.25)
     line_metrics = []
     
     for line in wrapped_lines:
@@ -83,14 +123,19 @@ def create_text_overlay_image(text, width, height):
         lh = bbox[3] - bbox[1]
         line_metrics.append((line, lw, lh))
 
-    current_y = int(height * 0.08)
-    stroke_w = 3
+    current_y = int(height * top_margin_ratio)
+    stroke_w = max(2, int(font_size * 0.08))
 
+    # 6. Drawing Text με Stroke Effect
     for line, lw, lh in line_metrics:
         x = (width - lw) // 2
+        
+        # Black Stroke/Outline για αναγνωσιμότητα
         for offset_x in range(-stroke_w, stroke_w + 1):
             for offset_y in range(-stroke_w, stroke_w + 1):
                 draw.text((x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0, 255))
+
+        # White Main Text
         draw.text((x, current_y), line, font=font, fill=(255, 255, 255, 255))
         current_y += lh + line_padding
     
@@ -98,7 +143,6 @@ def create_text_overlay_image(text, width, height):
     overlay_path = "temp/text_overlay.png"
     img.save(overlay_path)
     return overlay_path
-
 # 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE (META MUSICGEN)
 def generate_ai_music_hf(music_prompt):
     """Παράγει δωρεάν AI background music μέσω του Meta MusicGen στο Hugging Face"""
