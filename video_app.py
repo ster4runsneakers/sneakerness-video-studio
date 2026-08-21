@@ -62,26 +62,22 @@ def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # 1. Υπολογισμός Aspect Ratio
     aspect_ratio = width / height
     
-    # 2. Καθορισμός Safe Margins & Max Text Width βάσει Aspect Ratio
-    if aspect_ratio < 0.8: # 9:16 Vertical (TikTok/Reels)
+    if aspect_ratio < 0.8: # 9:16 Vertical
         top_margin_ratio = 0.12
         max_width_ratio = 0.75
         base_font_scale = 0.040
-    elif aspect_ratio > 1.2: # 16:9 Landscape (YouTube)
+    elif aspect_ratio > 1.2: # 16:9 Landscape
         top_margin_ratio = 0.07
         max_width_ratio = 0.65
         base_font_scale = 0.045
-    else: # 1:1 Square (Instagram Post)
+    else: # 1:1 Square
         top_margin_ratio = 0.08
         max_width_ratio = 0.70
         base_font_scale = 0.042
 
     max_text_width = int(width * max_width_ratio)
-    
-    # 3. Δυναμικό Font Size βάσει της MIKΡΟΤΕΡΗΣ διάστασης
     min_dim = min(width, height)
     font_size = int(min_dim * base_font_scale)
     
@@ -90,7 +86,6 @@ def create_text_overlay_image(text, width, height):
     except IOError:
         font = ImageFont.load_default()
 
-    # 4. Dynamic Refit: Μείωση font size αν το κείμενο είναι πολύ μεγάλο
     avg_char_width = font_size * 0.55
     chars_per_line = max(8, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
@@ -111,7 +106,6 @@ def create_text_overlay_image(text, width, height):
     chars_per_line = max(8, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
 
-    # 5. Υπολογισμός Metrics & Safe Placement
     line_padding = int(font_size * 0.25)
     line_metrics = []
     
@@ -124,16 +118,11 @@ def create_text_overlay_image(text, width, height):
     current_y = int(height * top_margin_ratio)
     stroke_w = max(2, int(font_size * 0.08))
 
-    # 6. Drawing Text με Stroke Effect
     for line, lw, lh in line_metrics:
         x = (width - lw) // 2
-        
-        # Black Stroke/Outline για αναγνωσιμότητα
         for offset_x in range(-stroke_w, stroke_w + 1):
             for offset_y in range(-stroke_w, stroke_w + 1):
                 draw.text((x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0, 255))
-
-        # White Main Text
         draw.text((x, current_y), line, font=font, fill=(255, 255, 255, 255))
         current_y += lh + line_padding
     
@@ -142,9 +131,8 @@ def create_text_overlay_image(text, width, height):
     img.save(overlay_path)
     return overlay_path
 
-# 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE (META MUSICGEN)
+# 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE
 def generate_ai_music_hf(music_prompt):
-    """Παράγει δωρεάν AI background music μέσω του Meta MusicGen στο Hugging Face"""
     if not hf_token:
         st.warning("⚠️ Δεν βρέθηκε το HF_TOKEN στα Secrets. Παράλειψη δημιουργίας AI Μουσικής.")
         return None
@@ -154,10 +142,7 @@ def generate_ai_music_hf(music_prompt):
     
     API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
     headers = {"Authorization": f"Bearer {hf_token}"}
-
-    payload = {
-        "inputs": music_prompt
-    }
+    payload = {"inputs": music_prompt}
 
     try:
         for attempt in range(3):
@@ -166,7 +151,7 @@ def generate_ai_music_hf(music_prompt):
                 with open(out_music_path, "wb") as f:
                     f.write(response.content)
                 return out_music_path
-            elif response.status_code == 503: # Model is loading
+            elif response.status_code == 503:
                 time.sleep(10)
             else:
                 break
@@ -194,12 +179,12 @@ with col_preview:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
 # 5. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
-def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 Vertical (TikTok/Reels)"):
+def generate_category_script(image_bytes, mime_type, target_aspect_ratio):
     sys_instruction = f"""You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
     Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script.
     Format: {target_aspect_ratio}.
     Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words).
-    Provide a 'music_prompt' (in English) optimized for Meta MusicGen to create an algorithmic viral background beat (e.g., 'energetic hip hop beat, 115 bpm, punchy kick, trendy synth line for fashion reels'). Do not request text overlays or letters in the video clips.
+    Provide a 'music_prompt' (in English) optimized for Meta MusicGen (e.g., 'energetic hip hop beat, 115 bpm, punchy kick').
     
     STRICT CATEGORY & STYLING MAPPING RULES:
     1. BASKETBALL: Oversized streetwear jersey, hardwood court, crossover dribble.
@@ -272,6 +257,7 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
 
                 script = generate_category_script(img_bytes, mime, aspect_choice)
                 st.session_state["script"] = script
+                st.session_state["selected_aspect"] = aspect_choice
                 st.session_state["brand_val"] = script.get("brand", "")
                 st.session_state["model_val"] = script.get("model", "")
                 st.session_state["colorway_val"] = script.get("colorway", "")
@@ -322,16 +308,21 @@ if "script" in st.session_state:
         if not grok_video_files or len(grok_video_files) == 0:
             st.warning("⚠️ Ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
         else:
-            with st.spinner("Η Python μοντάρει το βίντεο και παράγει την AI Μουσική..."):
+            with st.spinner("Η Python μοντάρει το βίντεο και προσαρμόζει τις διαστάσεις..."):
                 try:
                     os.makedirs("temp", exist_ok=True)
                     loaded_clips = []
 
-                    if "9:16" in aspect_choice: target_w, target_h = 1080, 1920
-                    elif "16:9" in aspect_choice: target_w, target_h = 1920, 1080
-                    else: target_w, target_h = 1080, 1080
+                    # Χρήση του τρέχοντος επιλεγμένου Aspect Ratio
+                    current_aspect = aspect_choice
 
-                    # Smart Crop / Resize στο επιλεγμένο Aspect Ratio
+                    if "9:16" in current_aspect:
+                        target_w, target_h = 1080, 1920
+                    elif "16:9" in current_aspect:
+                        target_w, target_h = 1920, 1080
+                    else: # 1:1
+                        target_w, target_h = 1080, 1080
+
                     target_aspect = target_w / target_h
 
                     for idx, vfile in enumerate(grok_video_files):
@@ -341,6 +332,7 @@ if "script" in st.session_state:
 
                         clip_aspect = clip.w / clip.h
 
+                        # ΑΥΣΤΗΡΟ SMART CROP & RESIZE
                         if abs(clip_aspect - target_aspect) > 0.01:
                             if clip_aspect > target_aspect:
                                 new_w = int(clip.h * target_aspect)
@@ -351,7 +343,8 @@ if "script" in st.session_state:
                                 crop_y1 = int((clip.h - new_h) / 2)
                                 clip = clip.crop(y1=crop_y1, width=clip.w, height=new_h)
 
-                        clip_resized = clip.resize((target_w, target_h))
+                        # Επιβολή τελικών διαστάσεων
+                        clip_resized = clip.resize(newsize=(target_w, target_h))
                         loaded_clips.append(clip_resized)
 
                     merged_video = concatenate_videoclips(loaded_clips, method="compose")
@@ -369,20 +362,20 @@ if "script" in st.session_state:
                             
                             merged_video = merged_video.set_audio(music_clip)
 
-                    output_path = "temp/final_sneakerness_ad.mp4"
+                    output_path = f"temp/final_sneakerness_ad_{int(time.time())}.mp4"
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
-                    overlay_img_path = create_text_overlay_image(text_content, merged_video.w, merged_video.h)
+                    overlay_img_path = create_text_overlay_image(text_content, target_w, target_h)
                     
                     txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
 
-                    final_clip = CompositeVideoClip([merged_video, txt_clip])
+                    final_clip = CompositeVideoClip([merged_video, txt_clip], size=(target_w, target_h))
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
                     for c in loaded_clips: c.close()
                     merged_video.close()
 
                     st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το βίντεο με την AI Μουσική ολοκληρώθηκε!")
+                    st.success(f"🎉 Το βίντεο προσαρμόστηκε επιτυχώς σε διαστάσεις {target_w}x{target_h}!")
 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -391,8 +384,8 @@ if "script" in st.session_state:
         st.video(st.session_state["rendered_video"])
         with open(st.session_state["rendered_video"], "rb") as file:
             st.download_button(
-                label="📥 Κατέβασμα Τελικού MP4 (με AI Music)",
+                label="📥 Κατέβασμα Τελικού MP4",
                 data=file,
-                file_name="sneakerness_ai_music_ad.mp4",
+                file_name="sneakerness_ad.mp4",
                 mime="video/mp4"
             )
