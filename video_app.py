@@ -1,8 +1,9 @@
-# video_app.py - Sneakerness Video Studio & Multi-Clip Engine (2026 Edition)
+# video_app.py - Sneakerness Video Studio & Pure AI Music (Meta MusicGen)
 import os
 import json
 import time
 import textwrap
+import requests
 from dotenv import load_dotenv
 from PIL import Image, ImageDraw, ImageFont
 
@@ -30,10 +31,12 @@ except ImportError:
 st.set_page_config(page_title="Sneakerness Video Studio", page_icon="🎬", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Category-Aware Archetype Engine & Multi-Clip Video Merger (2026)")
+st.subheader("Category-Aware Engine with Meta MusicGen AI & Multi-Clip Merger")
 
-# API Key check
+# API Keys Check
 api_key = os.getenv("GEMINI_API_KEY")
+hf_token = os.getenv("HF_TOKEN")
+
 if not api_key:
     st.error("❌ Δεν βρέθηκε το GEMINI_API_KEY στα Secrets / .env!")
     st.stop()
@@ -54,31 +57,24 @@ def clear_all_fields():
     if "script" in st.session_state: del st.session_state["script"]
     if "rendered_video" in st.session_state: del st.session_state["rendered_video"]
 
-# 2. HELPER FUNCTION: AUTO-WRAPPING & DYNAMICALLY SCALED TEXT OVERLAY
+# 2. HELPER FUNCTION: TEXT OVERLAY IMAGE
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
-    # 1. Καθορισμός μέγιστου πλάτους κειμένου (80% του πλάτους του βίντεο)
     max_text_width = int(width * 0.80)
-    
-    # 2. Δυναμικό μέγεθος γραμματοσειράς βάσει προσανατολισμού
     font_size = int(height * 0.035) if height > width else int(height * 0.05)
     
     try:
-        # Ψάχνουμε τη γραμματοσειρά τοπικά στο repo
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
     except IOError:
         font = ImageFont.load_default()
 
-    # 3. Αναδίπλωση κειμένου (Word Wrapping)
     avg_char_width = font_size * 0.55
     chars_per_line = max(10, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
     
-    # 4. Υπολογισμός συνολικού ύψους κειμένου
     line_padding = 10
-    total_text_height = 0
     line_metrics = []
     
     for line in wrapped_lines:
@@ -86,21 +82,15 @@ def create_text_overlay_image(text, width, height):
         lw = bbox[2] - bbox[0]
         lh = bbox[3] - bbox[1]
         line_metrics.append((line, lw, lh))
-        total_text_height += lh + line_padding
 
-    # 5. Τοποθέτηση στο πάνω μέρος (Top Safe Area)
     current_y = int(height * 0.08)
     stroke_w = 3
 
     for line, lw, lh in line_metrics:
         x = (width - lw) // 2
-        
-        # Stroke effect (Μαύρο περίγραμμα για αναγνωσιμότητα)
         for offset_x in range(-stroke_w, stroke_w + 1):
             for offset_y in range(-stroke_w, stroke_w + 1):
                 draw.text((x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0, 255))
-
-        # Λευκό κύριο κείμενο
         draw.text((x, current_y), line, font=font, fill=(255, 255, 255, 255))
         current_y += lh + line_padding
     
@@ -109,7 +99,39 @@ def create_text_overlay_image(text, width, height):
     img.save(overlay_path)
     return overlay_path
 
-# 3. UI & UPLOADS
+# 3. HELPER FUNCTION: GENERATE AI MUSIC VIA HUGGING FACE (META MUSICGEN)
+def generate_ai_music_hf(music_prompt):
+    """Παράγει δωρεάν AI background music μέσω του Meta MusicGen στο Hugging Face"""
+    if not hf_token:
+        st.warning("⚠️ Δεν βρέθηκε το HF_TOKEN στα Secrets. Παράλειψη δημιουργίας AI Μουσικής.")
+        return None
+
+    os.makedirs("temp", exist_ok=True)
+    out_music_path = "temp/generated_ai_music.wav"
+    
+    API_URL = "https://api-inference.huggingface.co/models/facebook/musicgen-small"
+    headers = {"Authorization": f"Bearer {hf_token}"}
+
+    payload = {
+        "inputs": music_prompt
+    }
+
+    try:
+        for attempt in range(3):
+            response = requests.post(API_URL, headers=headers, json=payload, timeout=60)
+            if response.status_code == 200:
+                with open(out_music_path, "wb") as f:
+                    f.write(response.content)
+                return out_music_path
+            elif response.status_code == 503: # Model is loading
+                time.sleep(10)
+            else:
+                break
+        return None
+    except Exception:
+        return None
+
+# 4. UI & UPLOADS
 col_header, col_reset = st.columns([3, 1])
 with col_reset:
     st.write("")
@@ -128,69 +150,45 @@ with col_preview:
     if uploaded_file is not None:
         st.image(uploaded_file, caption="Προεπισκόπηση", use_container_width=True)
 
-# 4. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
+# 5. CATEGORY-AWARE SCRIPT GENERATION FUNCTION
 def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 Vertical (TikTok/Reels)"):
     sys_instruction = f"""You are an expert commercial fashion director and video scriptwriter for Sneakerness.eu.
-    Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script for Grok AI.
-    The current target video format is: {target_aspect_ratio}. Ensure camera directions reflect this orientation.
-    Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words) so it fits perfectly on video screens.
+    Your job is to analyze the sneaker image, determine its exact FOOTWEAR CATEGORY, and construct a hyper-targeted 16-second video script.
+    Format: {target_aspect_ratio}.
+    Keep 'text_overlay' SHORT and IMPACTFUL (maximum 4 to 7 words).
+    Provide a 'music_prompt' (in English) optimized for Meta MusicGen to create an algorithmic viral background beat (e.g., 'energetic hip hop beat, 115 bpm, punchy kick, trendy synth line for fashion reels').
     
     STRICT CATEGORY & STYLING MAPPING RULES:
-    1. BASKETBALL (e.g. Kobe, Kyrie, Jordan, LeBron):
-       - Outfit: Oversized streetwear jersey/mesh shorts, compression tights, athletic socks.
-       - Environment: Hardwood court, outdoor concrete playground with chain-link fences.
-       - Action: Crossover dribble, jump shot, tied laces before entering court, casual walking with ball under arm.
-    2. PERFORMANCE RUNNING (e.g. HOKA, Brooks, Asics Gel-Nimbus, Nike Pegasus):
-       - Outfit: Technical running shorts, sweat-wicking athletic hoodie or tank, modern running socks.
-       - Environment: Wet asphalt street at dawn, urban park path, running track.
-       - Action: Morning stretch, dynamic footwork pace, walking after a long shift/run touching aching feet.
-    3. RETRO / LIFESTYLE (e.g. Adidas Samba, New Balance 550/2002R, Puma Suede):
-       - Outfit: Relaxed fit denim jeans or cargo trousers, oversized clean hoodie/t-shirt, tote bag.
-       - Environment: Urban coffee shop entrance, Metro stairs, minimalist concrete sidewalk.
-       - Action: Walking down city steps, sitting on outdoor bench tying shoe, casual street navigation.
-    4. OUTDOOR / TRAIL (e.g. Salomon XT-6, HOKA Speedgoat, Nike ACG):
-       - Outfit: GORE-TEX jacket, utility cargo pants, outdoor crew socks.
-       - Environment: Gravel trail, wet rock path, urban rainy street.
-       - Action: Walking over rough terrain, stepping through shallow puddle showing water resistance.
+    1. BASKETBALL: Oversized streetwear jersey, hardwood court, crossover dribble.
+    2. PERFORMANCE RUNNING: Technical shorts, wet asphalt at dawn, dynamic pace.
+    3. RETRO / LIFESTYLE: Cargo denim, coffee shop entrance, casual street navigation.
+    4. OUTDOOR / TRAIL: GORE-TEX jacket, gravel trail, stepping through shallow puddle.
 
     Return ONLY a valid JSON object."""
     
-    prompt = """Examine the provided sneaker image and generate a script based on its archetype.
+    prompt = """Examine the sneaker image and generate a script.
 
     Return strict JSON matching this schema:
     {
         "brand": "Detected Brand",
         "model": "Detected Model",
         "colorway": "Detected Colorway",
-        "category": "Detected Category (Basketball / Running / Lifestyle / Trail)",
-        "outfit_style": "Detailed outfit description (clothing, socks, pants)",
+        "category": "Detected Category",
+        "outfit_style": "Detailed outfit description",
         "concept": "Creative concept title",
         "mood": "Lighting and aesthetic vibe",
+        "music_prompt": "Specific music prompt for Meta MusicGen AI",
         "grok_prompts": [
-            {
-                "time": "0-5s (Action & Styling)", 
-                "grok_prompt": "Cinematic shot: A person wearing [exact outfit] and [Brand Model] performing [category action] in [category environment]..."
-            },
-            {
-                "time": "5-11s (Lifestyle Context)", 
-                "grok_prompt": "Tracking shot: Close-up on feet moving naturally in [category environment], showing [outfit details] and sneaker flexibility..."
-            },
-            {
-                "time": "11-16s (Climax & Footwork)", 
-                "grok_prompt": "Dynamic low-angle camera: Detailed footwork movement showing [Brand Model] in action..."
-            }
+            {"time": "0-5s", "grok_prompt": "Cinematic shot..."},
+            {"time": "5-11s", "grok_prompt": "Tracking shot..."},
+            {"time": "11-16s", "grok_prompt": "Dynamic low-angle camera..."}
         ],
-        "text_overlay": "Short high-converting text overlay",
-        "music_vibe": "Category-matched audio style"
+        "text_overlay": "Short text overlay"
     }"""
     
-    contents = [
-        types.Part.from_bytes(data=image_bytes, mime_type=mime_type),
-        prompt
-    ]
-
-    # ΔΙΟΡΘΩΣΗ: Σύγχρονα μοντέλα API για το 2026
+    contents = [types.Part.from_bytes(data=image_bytes, mime_type=mime_type), prompt]
     models_to_try = ["gemini-2.0-flash", "gemini-1.5-flash"]
+    
     for model_item in models_to_try:
         try:
             response = client.models.generate_content(
@@ -212,7 +210,7 @@ def generate_category_script(image_bytes, mime_type, target_aspect_ratio="9:16 V
             
     raise Exception("Model failed to generate category script.")
 
-# 5. ASPECT RATIO SELECTOR
+# 6. ASPECT RATIO SELECTOR
 aspect_choice = st.selectbox(
     "📐 Επιλογή Aspect Ratio (Διάσταση Βίντεο)", 
     ["9:16 Vertical (TikTok / Reels / Shorts)", "16:9 Landscape (YouTube / Banner)", "1:1 Square (Instagram Post)"]
@@ -222,7 +220,7 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
     if not uploaded_file:
         st.warning("⚠️ Παρακαλώ ανέβασε πρώτα μια φωτογραφία παπουτσιού!")
     else:
-        with st.spinner("Ο σκηνοθέτης αναλύει την κατηγορία, το ντύσιμο και το στυλ..."):
+        with st.spinner("Ανάλυση κατηγορίας & παραγωγή σεναρίου..."):
             try:
                 img_bytes = uploaded_file.getvalue()
                 mime = "image/jpeg"
@@ -238,18 +236,18 @@ if st.button("🚀 Δημιουργία Category-Aware Script", type="primary"):
             except Exception as err:
                 st.error(f"❌ Σφάλμα: {str(err)}")
 
-# 6. EDITABLE FIELDS
+# 7. EDITABLE FIELDS
 col1, col2, col3 = st.columns(3)
 with col1: brand = st.text_input("Brand", value=st.session_state["brand_val"])
 with col2: model_name = st.text_input("Model", value=st.session_state["model_val"])
 with col3: colorway = st.text_input("Colorway", value=st.session_state["colorway_val"])
 
-# 7. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
+# 8. SCRIPT DISPLAY & MULTI-CLIP POST-PRODUCTION
 if "script" in st.session_state:
     script = st.session_state["script"]
     
     st.markdown("---")
-    tab1, tab2, tab3 = st.tabs(["🏷️ Category & Outfit", "💡 Concept & Mood", "🤖 AI Video Prompts"])
+    tab1, tab2, tab3 = st.tabs(["🏷️ Category & Outfit", "💡 Concept & AI Music Vibe", "🤖 AI Video Prompts"])
 
     with tab1:
         col_cat, col_outfit = st.columns(2)
@@ -258,8 +256,7 @@ if "script" in st.session_state:
 
     with tab2:
         st.success(f"💡 **Concept:** {script.get('concept', '')}")
-        st.write(f"** Mood:** {script.get('mood', '')}")
-        st.write(f"** Μουσικό Vibe:** {script.get('music_vibe', '')}")
+        st.write(f"🎵 **Meta MusicGen Prompt:** {script.get('music_prompt', '')}")
 
     with tab3:
         st.write(f"**Προτεινόμενο Overlay Text:** {script.get('text_overlay', '')}")
@@ -268,41 +265,34 @@ if "script" in st.session_state:
             st.code(item.get('grok_prompt'), language="text")
         
     st.markdown("---")
-    st.markdown("### 🎬 Multi-Clip Merger & Aspect Ratio Crop (MoviePy)")
+    st.markdown("### 🎬 Multi-Clip Merger & AI Audio Post-Production")
+    
     grok_video_files = st.file_uploader(
         "📥 Ανέβασε έως 6 βίντεο-κλιπ (.mp4)", 
         type=["mp4", "mov"], 
         accept_multiple_files=True
     )
-    bg_audio_file = st.file_uploader("🎵 Ανέβασε κομμάτι Μουσικής (.mp3)", type=["mp3"])
+    
+    use_ai_music = st.checkbox("🎵 Αυτόματη Δημιουργία AI Background Music (Meta MusicGen)", value=True)
 
-    if st.button("⚙️ Σύνθεση Κλιπ, Resize & Branding", type="primary"):
+    if st.button("⚙️ Σύνθεση Κλιπ, AI Μουσικής & Branding", type="primary"):
         if not grok_video_files or len(grok_video_files) == 0:
             st.warning("⚠️ Ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
-        elif len(grok_video_files) > 6:
-            st.error("❌ Παρακαλώ ανέβασε μέχρι 6 βίντεο-κλιπ.")
         else:
-            with st.spinner("Η Python προσαρμόζει τις διαστάσεις και μοντάρει το τελικό βίντεο... Αυτό μπορεί να πάρει έως 1 λεπτό."):
+            with st.spinner("Η Python μοντάρει το βίντεο και παράγει την AI Μουσική..."):
                 try:
                     os.makedirs("temp", exist_ok=True)
                     loaded_clips = []
 
-                    # 1. Υπολογισμός Διαστάσεων βάσει Aspect Ratio
-                    if "9:16" in aspect_choice:
-                        target_w, target_h = 1080, 1920
-                    elif "16:9" in aspect_choice:
-                        target_w, target_h = 1920, 1080
-                    else:  # 1:1
-                        target_w, target_h = 1080, 1080
+                    if "9:16" in aspect_choice: target_w, target_h = 1080, 1920
+                    elif "16:9" in aspect_choice: target_w, target_h = 1920, 1080
+                    else: target_w, target_h = 1080, 1080
 
-                    # 2. Φόρτωση, Auto-Crop & Resize κάθε κλιπ
                     for idx, vfile in enumerate(grok_video_files):
                         vpath = f"temp/input_clip_{idx}.mp4"
-                        with open(vpath, "wb") as f:
-                            f.write(vfile.getbuffer())
+                        with open(vpath, "wb") as f: f.write(vfile.getbuffer())
                         clip = VideoFileClip(vpath)
 
-                        # Smart Crop / Resize στο επιλεγμένο Aspect Ratio
                         clip_aspect = clip.w / clip.h
                         target_aspect = target_w / target_h
 
@@ -316,36 +306,35 @@ if "script" in st.session_state:
                         clip_resized = clip_cropped.resize((target_w, target_h))
                         loaded_clips.append(clip_resized)
 
-                    # 3. Ένωση των βίντεο στη σειρά
                     merged_video = concatenate_videoclips(loaded_clips, method="compose")
 
-                    # 4. Φόρτωση ήχου
-                    if bg_audio_file:
-                        audio_input_path = "temp/bg_audio.mp3"
-                        with open(audio_input_path, "wb") as f:
-                            f.write(bg_audio_file.getbuffer())
-                        audio_clip = AudioFileClip(audio_input_path).subclip(0, min(merged_video.duration, AudioFileClip(audio_input_path).duration))
-                        merged_video = merged_video.set_audio(audio_clip)
+                    # ΗΧΟΣ: Meta MusicGen Background Music
+                    if use_ai_music:
+                        m_prompt = script.get("music_prompt", "energetic viral commercial background beat, 115 bpm")
+                        music_path = generate_ai_music_hf(m_prompt)
+                        if music_path and os.path.exists(music_path):
+                            music_clip = AudioFileClip(music_path)
+                            if music_clip.duration < merged_video.duration:
+                                music_clip = music_clip.loop(duration=merged_video.duration)
+                            else:
+                                music_clip = music_clip.subclip(0, merged_video.duration)
+                            
+                            merged_video = merged_video.set_audio(music_clip)
 
-                    # 5. Δημιουργία overlay μέσω PIL με αυτόματο Wrapping & Scaling
                     output_path = "temp/final_sneakerness_ad.mp4"
                     text_content = script.get('text_overlay', 'SNEAKERNESS.EU')
                     overlay_img_path = create_text_overlay_image(text_content, merged_video.w, merged_video.h)
                     
                     txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
 
-                    # 6. Τελική σύνθεση & Export
                     final_clip = CompositeVideoClip([merged_video, txt_clip])
                     final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
-                    # Κλείσιμο clips για αποδέσμευση πόρων
                     for c in loaded_clips: c.close()
                     merged_video.close()
-                    txt_clip.close()
-                    if bg_audio_file: audio_clip.close()
 
                     st.session_state["rendered_video"] = output_path
-                    st.success("🎉 Το βίντεο προσαρμόστηκε στις επιλεγμένες διαστάσεις και ολοκληρώθηκε!")
+                    st.success("🎉 Το βίντεο με την AI Μουσική ολοκληρώθηκε!")
 
                 except Exception as e:
                     st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -354,8 +343,8 @@ if "script" in st.session_state:
         st.video(st.session_state["rendered_video"])
         with open(st.session_state["rendered_video"], "rb") as file:
             st.download_button(
-                label="📥 Κατέβασμα Τελικού MP4 (Sneakerness Ready)",
+                label="📥 Κατέβασμα Τελικού MP4 (με AI Music)",
                 data=file,
-                file_name="sneakerness_final_aspect.mp4",
+                file_name="sneakerness_ai_music_ad.mp4",
                 mime="video/mp4"
             )
