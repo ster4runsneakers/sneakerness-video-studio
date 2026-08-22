@@ -1,4 +1,4 @@
-# video_app.py - Dedicated Video Studio (Clean Rendering Engine)
+# video_app.py - Dedicated Video Studio (With English AI Voiceover & Subtitles)
 import os
 import time
 import shutil
@@ -23,7 +23,7 @@ from moviepy.audio.AudioClip import CompositeAudioClip
 st.set_page_config(page_title="Sneakerness Video Studio", page_icon="🎬", layout="centered")
 
 st.title("🎬 Sneakerness Video Studio")
-st.subheader("Dedicated Video Editing, Aspect Ratio Resizer & AI Audio Engine")
+st.subheader("Video Editor with English AI Voiceover, Music & Subtitles")
 
 api_key = os.getenv("GEMINI_API_KEY")
 hf_token = os.getenv("HF_TOKEN")
@@ -43,29 +43,16 @@ def reset_temp_dir():
             pass
     os.makedirs("temp", exist_ok=True)
 
-# 2. HELPER: UNIVERSAL CLEAN TEXT OVERLAY
+# 2. HELPER: TOP BRANDING OVERLAY
 def create_text_overlay_image(text, width, height):
     img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
     draw = ImageDraw.Draw(img)
     
     aspect_ratio = width / height
-    
-    if aspect_ratio < 0.8: # 9:16 Vertical
-        top_margin_ratio = 0.10
-        max_width_ratio = 0.70
-        base_font_scale = 0.038
-    elif aspect_ratio > 1.2: # 16:9 Landscape
-        top_margin_ratio = 0.06
-        max_width_ratio = 0.60
-        base_font_scale = 0.042
-    else: # 1:1 Square
-        top_margin_ratio = 0.07
-        max_width_ratio = 0.65
-        base_font_scale = 0.040
-
-    max_text_width = int(width * max_width_ratio)
+    top_margin_ratio = 0.10 if aspect_ratio < 0.8 else 0.06
+    max_text_width = int(width * 0.70)
     min_dim = min(width, height)
-    font_size = int(min_dim * base_font_scale)
+    font_size = int(min_dim * 0.038)
     
     try:
         font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
@@ -76,31 +63,14 @@ def create_text_overlay_image(text, width, height):
     chars_per_line = max(6, int(max_text_width / avg_char_width))
     wrapped_lines = textwrap.wrap(text, width=chars_per_line)
 
-    for line in wrapped_lines:
-        bbox = draw.textbbox((0, 0), line, font=font)
-        line_w = bbox[2] - bbox[0]
-        while line_w > max_text_width and font_size > 12:
-            font_size -= 2
-            try:
-                font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
-            except IOError:
-                font = ImageFont.load_default()
-            bbox = draw.textbbox((0, 0), line, font=font)
-            line_w = bbox[2] - bbox[0]
-
     line_padding = int(font_size * 0.20)
-    line_metrics = []
-    
+    current_y = int(height * top_margin_ratio)
+    stroke_w = max(2, int(font_size * 0.08))
+
     for line in wrapped_lines:
         bbox = draw.textbbox((0, 0), line, font=font)
         lw = bbox[2] - bbox[0]
         lh = bbox[3] - bbox[1]
-        line_metrics.append((line, lw, lh))
-
-    current_y = int(height * top_margin_ratio)
-    stroke_w = max(2, int(font_size * 0.08))
-
-    for line, lw, lh in line_metrics:
         x = (width - lw) // 2
         for offset_x in range(-stroke_w, stroke_w + 1):
             for offset_y in range(-stroke_w, stroke_w + 1):
@@ -113,7 +83,49 @@ def create_text_overlay_image(text, width, height):
     img.save(overlay_path)
     return overlay_path
 
-# 3. HELPER: AI MUSIC GENERATOR (META MUSICGEN)
+# 3. HELPER: SUBTITLES OVERLAY GENERATOR (BOTTOM SAFE AREA)
+def create_subtitles_overlay_image(text, width, height):
+    img = Image.new('RGBA', (width, height), (0, 0, 0, 0))
+    draw = ImageDraw.Draw(img)
+    
+    aspect_ratio = width / height
+    bottom_margin_ratio = 0.80 if aspect_ratio < 0.8 else 0.85
+    max_text_width = int(width * 0.80)
+    min_dim = min(width, height)
+    font_size = int(min_dim * 0.035)
+    
+    try:
+        font = ImageFont.truetype("DejaVuSans-Bold.ttf", font_size)
+    except IOError:
+        font = ImageFont.load_default()
+
+    avg_char_width = font_size * 0.55
+    chars_per_line = max(8, int(max_text_width / avg_char_width))
+    wrapped_lines = textwrap.wrap(text, width=chars_per_line)
+
+    line_padding = int(font_size * 0.15)
+    current_y = int(height * bottom_margin_ratio)
+    stroke_w = max(2, int(font_size * 0.08))
+
+    for line in wrapped_lines:
+        bbox = draw.textbbox((0, 0), line, font=font)
+        lw = bbox[2] - bbox[0]
+        lh = bbox[3] - bbox[1]
+        x = (width - lw) // 2
+        
+        # Yellow Subtitles with Black Stroke
+        for offset_x in range(-stroke_w, stroke_w + 1):
+            for offset_y in range(-stroke_w, stroke_w + 1):
+                draw.text((x + offset_x, current_y + offset_y), line, font=font, fill=(0, 0, 0, 255))
+        draw.text((x, current_y), line, font=font, fill=(255, 223, 0, 255)) # Warm Yellow Text
+        current_y += lh + line_padding
+    
+    os.makedirs("temp", exist_ok=True)
+    sub_path = f"temp/sub_overlay_{int(time.time())}.png"
+    img.save(sub_path)
+    return sub_path
+
+# 4. HELPER: AI MUSIC GENERATOR (META MUSICGEN)
 def generate_ai_music_hf(music_prompt):
     if not hf_token:
         return None
@@ -140,7 +152,7 @@ def generate_ai_music_hf(music_prompt):
     except Exception:
         return None
 
-# 4. HELPER: AI VOICEOVER GENERATOR (GEMINI API)
+# 5. HELPER: ENGLISH AI VOICEOVER GENERATOR (GEMINI API)
 def generate_ai_voiceover(text_prompt):
     try:
         os.makedirs("temp", exist_ok=True)
@@ -148,7 +160,7 @@ def generate_ai_voiceover(text_prompt):
         
         response = client.models.generate_content(
             model="gemini-2.0-flash",
-            contents=f"Read the following commercial ad script in a crisp, energetic narrator voice (English): '{text_prompt}'",
+            contents=f"Read the following commercial ad script in a natural, energetic male narrator voice (English): '{text_prompt}'",
             config=types.GenerateContentConfig(
                 response_mime_type="audio/mp3"
             )
@@ -164,7 +176,7 @@ def generate_ai_voiceover(text_prompt):
     except Exception:
         return None
 
-# 5. UI INPUTS FOR VIDEO PROCESSING
+# 6. UI INPUTS FOR VIDEO PROCESSING
 st.markdown("---")
 grok_video_files = st.file_uploader(
     "📥 Ανέβασε τα καθαρά βίντεο-κλιπ σου (.mp4)", 
@@ -179,9 +191,9 @@ with col_v1:
         ["9:16 Vertical (TikTok / Reels)", "16:9 Landscape (YouTube)", "1:1 Square (Instagram)"]
     )
 with col_v2:
-    custom_overlay_text = st.text_input("✍️ Overlay Text (Άφησέ το κενό αν δεν θέλεις κείμενο)", value="SNEAKERNESS.EU")
+    custom_overlay_text = st.text_input("✍️ Top Branding Text", value="SNEAKERNESS.EU")
 
-st.markdown("##### 🎵 Ρυθμίσεις AI Ήχου")
+st.markdown("##### 🎵 Ρυθμίσεις AI Ήχου & Υπότιτλων")
 col_a1, col_a2 = st.columns(2)
 
 with col_a1:
@@ -189,15 +201,15 @@ with col_a1:
     custom_music_prompt = st.text_input("Prompt Μουσικής", value="energetic basketball commercial background beat, 115 bpm")
 
 with col_a2:
-    use_ai_vo = st.checkbox("🗣️ Προσθήκη AI Ομιλίας (Voiceover)", value=False)
-    custom_vo_script = st.text_area("Σενάριο Ομιλίας (English)", value="Unleash your potential with the latest release at Sneakerness.eu")
+    use_ai_vo = st.checkbox("🗣️ Προσθήκη English Voiceover & Υπότιτλων", value=True)
+    custom_vo_script = st.text_area("Σενάριο Ομιλίας (English Script)", value="Unleash your potential with the latest release at Sneakerness.eu")
 
-# 6. PROCESSING BUTTON
+# 7. PROCESSING BUTTON
 if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"):
     if not grok_video_files or len(grok_video_files) == 0:
         st.warning("⚠️ Παρακαλώ ανέβασε τουλάχιστον ένα βίντεο-κλιπ!")
     else:
-        with st.spinner("Καθαρισμός μνήμης, προσαρμογή Aspect Ratio & σύνθεση ήχου..."):
+        with st.spinner("Επεξεργασία βίντεο, παραγωγή ομιλίας, υπότιτλων & AI μουσικής..."):
             try:
                 reset_temp_dir()
                 loaded_clips = []
@@ -215,7 +227,6 @@ if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"
 
                     clip_aspect = clip.w / clip.h
 
-                    # ΑΥΣΤΗΡΟ SMART CROP
                     if abs(clip_aspect - target_aspect) > 0.01:
                         if clip_aspect > target_aspect:
                             new_w = int(clip.h * target_aspect)
@@ -231,14 +242,22 @@ if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"
 
                 merged_video = concatenate_videoclips(loaded_clips, method="compose")
 
-                # ΗΧΟΣ
+                # ΗΧΟΣ & ΥΠΟΤΙΤΛΟΙ
                 audio_tracks = []
+                overlays_list = [merged_video]
+                vo_duration = 0
 
                 if use_ai_vo and custom_vo_script.strip():
                     vo_path = generate_ai_voiceover(custom_vo_script.strip())
                     if vo_path and os.path.exists(vo_path):
                         vo_clip = AudioFileClip(vo_path)
+                        vo_duration = vo_clip.duration
                         audio_tracks.append(vo_clip)
+
+                        # Δημιουργία Υπότιτλων
+                        sub_img_path = create_subtitles_overlay_image(custom_vo_script.strip(), target_w, target_h)
+                        sub_clip = ImageClip(sub_img_path).set_start(0).set_duration(min(vo_duration, merged_video.duration))
+                        overlays_list.append(sub_clip)
 
                 if use_ai_music and custom_music_prompt.strip():
                     music_path = generate_ai_music_hf(custom_music_prompt.strip())
@@ -249,8 +268,9 @@ if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"
                         else:
                             music_clip = music_clip.subclip(0, merged_video.duration)
                         
+                        # Audio Ducking: Χαμηλώνουμε τη μουσική όταν υπάρχει Voiceover
                         if use_ai_vo and len(audio_tracks) > 0:
-                            music_clip = music_clip.volumex(0.30)
+                            music_clip = music_clip.volumex(0.25)
                         
                         audio_tracks.append(music_clip)
 
@@ -258,14 +278,14 @@ if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"
                     final_audio = CompositeAudioClip(audio_tracks)
                     merged_video = merged_video.set_audio(final_audio)
 
-                output_path = f"temp/final_sneakerness_ad_{int(time.time())}.mp4"
-
+                # Top Branding Overlay
                 if custom_overlay_text.strip():
                     overlay_img_path = create_text_overlay_image(custom_overlay_text.strip(), target_w, target_h)
                     txt_clip = ImageClip(overlay_img_path).set_start(0).set_duration(merged_video.duration)
-                    final_clip = CompositeVideoClip([merged_video, txt_clip], size=(target_w, target_h))
-                else:
-                    final_clip = merged_video
+                    overlays_list.append(txt_clip)
+
+                final_clip = CompositeVideoClip(overlays_list, size=(target_w, target_h))
+                output_path = f"temp/final_sneakerness_ad_{int(time.time())}.mp4"
 
                 final_clip.write_videofile(output_path, codec="libx264", audio_codec="aac", fps=24, preset="medium", logger=None)
 
@@ -273,7 +293,7 @@ if st.button("⚙️ Σύνθεση, Crop & Render Βίντεο", type="primary"
                 merged_video.close()
 
                 st.session_state["v_rendered_video"] = output_path
-                st.success("🎉 Το βίντεο ολοκληρώθηκε επιτυχώς!")
+                st.success("🎉 Το βίντεο με αγγλικό Voiceover & Υπότιτλους ολοκληρώθηκε!")
 
             except Exception as e:
                 st.error(f"❌ Σφάλμα rendering: {str(e)}")
@@ -284,6 +304,6 @@ if "v_rendered_video" in st.session_state and os.path.exists(st.session_state["v
         st.download_button(
             label="📥 Κατέβασμα Τελικού MP4",
             data=file,
-            file_name="sneakerness_video_ad.mp4",
+            file_name="sneakerness_english_video_ad.mp4",
             mime="video/mp4"
         )
